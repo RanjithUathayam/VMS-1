@@ -79,7 +79,11 @@ export class JoStatusComponent implements OnInit {
     readonly stageColors = STAGE_COLORS;
     readonly docTypeList = DOC_TYPES;
 
-    isVendor = computed(() => this.currentUser()?.role === 'vendor');
+    isVendor         = computed(() => this.currentUser()?.role === 'vendor');
+    isAdminOrManager = computed(() => {
+        const role = this.currentUser()?.role;
+        return role === 'admin' || role === 'manager';
+    });
 
     // ── Entry form ─────────────────────────────────────────
     showEntryForm   = signal(false);
@@ -166,6 +170,67 @@ export class JoStatusComponent implements OnInit {
     isAddingEntry  = signal(false);
     addEntryResult = signal<{ status: number; message: string } | null>(null);
     isDeletingJoId = signal<number | null>(null);
+
+    // ── Overview (admin/manager dashboard) ────────────────
+    overviewStatusFilter = signal('');
+    overviewCurrentPage  = signal(1);
+
+    joStatus(row: any): 'Completed' | 'In Progress' | 'Pending' {
+        const pd  = Number(row.PackingDispatch) || 0;
+        const oq  = Number(row.OrderQty) || 0;
+        if (pd > 0 && pd >= oq) return 'Completed';
+        if ((Number(row.TotalStageQty) || 0) > 0) return 'In Progress';
+        return 'Pending';
+    }
+
+    joCurrentStage(row: any): string {
+        if (Number(row.PackingDispatch)   > 0) return 'Packing & Dispatch';
+        if (Number(row.QualityFinishing)  > 0) return 'Quality & Finishing';
+        if (Number(row.FinishingSewing)   > 0) return 'Finishing Sewing';
+        if (Number(row.SewingAssembly)    > 0) return 'Sewing Assembly';
+        if (Number(row.FusingComponent)   > 0) return 'Fusing & Component';
+        if (Number(row.FabricPreparation) > 0) return 'Fabric Preparation';
+        return 'Not Started';
+    }
+
+    joCompletedQty(row: any): number { return Number(row.PackingDispatch) || 0; }
+    joPendingQty(row: any):   number {
+        return Math.max(0, (Number(row.OrderQty) || 0) - (Number(row.PackingDispatch) || 0));
+    }
+
+    ovTotal      = computed(() => this.filteredList().length);
+    ovInProgress = computed(() => this.filteredList().filter(r => this.joStatus(r) === 'In Progress').length);
+    ovCompleted  = computed(() => this.filteredList().filter(r => this.joStatus(r) === 'Completed').length);
+    ovPending    = computed(() => this.filteredList().filter(r => this.joStatus(r) === 'Pending').length);
+
+    overviewFiltered = computed(() => {
+        const filter = this.overviewStatusFilter();
+        const list   = this.filteredList();
+        return filter ? list.filter(r => this.joStatus(r) === filter) : list;
+    });
+
+    overviewTotalPages = computed(() =>
+        Math.max(1, Math.ceil(this.overviewFiltered().length / this.pageSize))
+    );
+
+    overviewPaginatedList = computed(() => {
+        const safePage = Math.min(this.overviewCurrentPage(), this.overviewTotalPages());
+        const start    = (safePage - 1) * this.pageSize;
+        return this.overviewFiltered().slice(start, start + this.pageSize);
+    });
+
+    overviewTotalPagesArray = computed(() =>
+        Array.from({ length: this.overviewTotalPages() }, (_, i) => i + 1)
+    );
+
+    setOverviewStatusFilter(f: string): void {
+        this.overviewStatusFilter.set(this.overviewStatusFilter() === f ? '' : f);
+        this.overviewCurrentPage.set(1);
+    }
+
+    ovPreviousPage(): void { this.overviewCurrentPage.update(p => Math.max(1, p - 1)); }
+    ovNextPage():     void { this.overviewCurrentPage.update(p => Math.min(this.overviewTotalPages(), p + 1)); }
+    ovGoToPage(p: number): void { this.overviewCurrentPage.set(p); }
 
     // ── List / search ──────────────────────────────────────
     searchTerm  = signal('');
@@ -467,7 +532,7 @@ export class JoStatusComponent implements OnInit {
         }
     }
 
-    onSearch(term: string): void { this.searchTerm.set(term); this.currentPage.set(1); }
+    onSearch(term: string): void { this.searchTerm.set(term); this.currentPage.set(1); this.overviewCurrentPage.set(1); }
     previousPage(): void { this.currentPage.update(p => Math.max(1, p - 1)); }
     nextPage():     void { this.currentPage.update(p => Math.min(this.totalPages(), p + 1)); }
     goToPage(p: number): void { this.currentPage.set(p); }

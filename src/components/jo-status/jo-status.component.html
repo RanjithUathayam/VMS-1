@@ -419,7 +419,211 @@
     </div>
     }
 
-    <!-- ═══════════════════════ STATS BAR ═══════════════════════ -->
+    <!-- ═══════════════════ OVERVIEW DASHBOARD (admin/manager) ═══════════════════ -->
+    @if (isAdminOrManager() && !selectedJo()) {
+    <div class="ov-dashboard">
+
+        <!-- Stats Cards Row -->
+        <div class="ov-stats-row">
+            <div class="ov-stat-card"
+                 [class.ov-stat--active]="!overviewStatusFilter()"
+                 (click)="setOverviewStatusFilter('')">
+                <div class="ov-stat-icon ov-stat-icon--indigo">
+                    <svg viewBox="0 0 20 20" fill="currentColor"><path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z"/></svg>
+                </div>
+                <div class="ov-stat-body">
+                    <span class="ov-stat-num">{{ ovTotal() }}</span>
+                    <span class="ov-stat-lbl">Total JOs</span>
+                </div>
+            </div>
+            <div class="ov-stat-card ov-stat--amber"
+                 [class.ov-stat--active]="overviewStatusFilter() === 'In Progress'"
+                 (click)="setOverviewStatusFilter('In Progress')">
+                <div class="ov-stat-icon ov-stat-icon--amber">
+                    <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"/></svg>
+                </div>
+                <div class="ov-stat-body">
+                    <span class="ov-stat-num">{{ ovInProgress() }}</span>
+                    <span class="ov-stat-lbl">In Progress</span>
+                </div>
+            </div>
+            <div class="ov-stat-card ov-stat--green"
+                 [class.ov-stat--active]="overviewStatusFilter() === 'Completed'"
+                 (click)="setOverviewStatusFilter('Completed')">
+                <div class="ov-stat-icon ov-stat-icon--green">
+                    <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clip-rule="evenodd"/></svg>
+                </div>
+                <div class="ov-stat-body">
+                    <span class="ov-stat-num">{{ ovCompleted() }}</span>
+                    <span class="ov-stat-lbl">Completed</span>
+                </div>
+            </div>
+            <div class="ov-stat-card ov-stat--slate"
+                 [class.ov-stat--active]="overviewStatusFilter() === 'Pending'"
+                 (click)="setOverviewStatusFilter('Pending')">
+                <div class="ov-stat-icon ov-stat-icon--slate">
+                    <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clip-rule="evenodd"/></svg>
+                </div>
+                <div class="ov-stat-body">
+                    <span class="ov-stat-num">{{ ovPending() }}</span>
+                    <span class="ov-stat-lbl">Not Started</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filter / Search bar -->
+        <div class="ov-filter-bar">
+            <div class="jo-search-wrap">
+                <svg class="jo-search-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 15.803 7.5 7.5 0 0015.803 15.803z"/>
+                </svg>
+                <input type="text" class="jo-search-input"
+                    placeholder="Search by JO number, vendor, style…"
+                    [value]="searchTerm()"
+                    (input)="onSearch($any($event.target).value)" />
+            </div>
+            @if (overviewStatusFilter()) {
+            <button class="ov-clear-filter" (click)="setOverviewStatusFilter('')">
+                <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+                Clear Filter
+            </button>
+            }
+            <span class="ov-result-count">{{ overviewFiltered().length }} JOs</span>
+        </div>
+
+        <!-- Overview Table -->
+        @if (isListLoading()) {
+        <div class="jo-loader-row">
+            <div class="jo-spinner"></div>
+            <span>Loading job orders…</span>
+        </div>
+        }
+
+        @if (!isListLoading() && overviewFiltered().length === 0) {
+        <div class="jo-empty-row">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z"/>
+            </svg>
+            <span>{{ searchTerm() ? 'No matching records' : 'No job orders found.' }}</span>
+        </div>
+        }
+
+        @if (!isListLoading() && overviewFiltered().length > 0) {
+        <div class="ov-table-wrap">
+            <table class="ov-table">
+                <thead>
+                    <tr>
+                        <th class="ov-th-num">#</th>
+                        <th>JO / Document</th>
+                        <th>Vendor / Customer</th>
+                        <th>Style / Item</th>
+                        <th>Current Stage</th>
+                        <th class="ov-th-progress">Progress</th>
+                        <th class="ov-th-qty">Order Qty</th>
+                        <th class="ov-th-qty">Completed</th>
+                        <th class="ov-th-qty">Pending</th>
+                        <th class="ov-th-status">Status</th>
+                        <th class="ov-th-action"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @for (row of overviewPaginatedList(); track row.Id; let i = $index) {
+                    <tr class="ov-tr" (click)="selectJo(row)">
+                        <td class="ov-td-num">{{ (overviewCurrentPage() - 1) * pageSize + i + 1 }}</td>
+                        <td>
+                            <div class="ov-doc-cell">
+                                @if (row.DocType) {
+                                <span class="doc-type-chip">{{ row.DocType }}</span>
+                                }
+                                <span class="jo-no-pill">{{ row.JO_No }}</span>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="ov-vendor-cell">
+                                <span class="ov-vendor-name">{{ row.VendorName || '—' }}</span>
+                                @if (row.VendorCode) {
+                                <span class="jo-vendor-code-tag">{{ row.VendorCode }}</span>
+                                }
+                            </div>
+                        </td>
+                        <td>
+                            <span class="ov-style-lbl">{{ row.Style || '—' }}</span>
+                        </td>
+                        <td>
+                            <span class="ov-stage-lbl
+                                {{ joStatus(row) === 'Completed' ? ' ov-stage-lbl--done' : '' }}
+                                {{ joCurrentStage(row) === 'Not Started' ? ' ov-stage-lbl--none' : '' }}">
+                                {{ joCurrentStage(row) }}
+                            </span>
+                        </td>
+                        <td class="ov-td-progress">
+                            <div class="ov-prog-wrap">
+                                <div class="ov-prog-bar">
+                                    <div class="ov-prog-fill"
+                                        [style.width.%]="rowProgress(row)"
+                                        [class.ov-prog-fill--done]="joStatus(row) === 'Completed'">
+                                    </div>
+                                </div>
+                                <span class="ov-prog-pct">{{ rowProgress(row) }}%</span>
+                            </div>
+                        </td>
+                        <td class="ov-td-qty"><span class="qty-pill">{{ row.OrderQty }}</span></td>
+                        <td class="ov-td-qty">
+                            <span class="qty-pill" [class.qty-pill--green]="joCompletedQty(row) > 0">
+                                {{ joCompletedQty(row) }}
+                            </span>
+                        </td>
+                        <td class="ov-td-qty">
+                            <span class="qty-pill" [class.qty-pill--muted]="joPendingQty(row) === 0">
+                                {{ joPendingQty(row) }}
+                            </span>
+                        </td>
+                        <td>
+                            <span class="ov-status-badge"
+                                [class.ov-status--progress]="joStatus(row) === 'In Progress'"
+                                [class.ov-status--done]="joStatus(row) === 'Completed'"
+                                [class.ov-status--pending]="joStatus(row) === 'Pending'">
+                                @if (joStatus(row) === 'Completed') {
+                                <svg viewBox="0 0 12 12" fill="currentColor"><circle cx="6" cy="6" r="6"/></svg>
+                                } @else if (joStatus(row) === 'In Progress') {
+                                <svg viewBox="0 0 12 12" fill="currentColor"><circle cx="6" cy="6" r="6"/></svg>
+                                } @else {
+                                <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="4.5"/></svg>
+                                }
+                                {{ joStatus(row) }}
+                            </span>
+                        </td>
+                        <td class="ov-td-action">
+                            <button class="btn-view-detail" (click)="selectJo(row); $event.stopPropagation()">
+                                <svg viewBox="0 0 20 20" fill="currentColor"><path d="M10 12.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z"/><path fill-rule="evenodd" d="M.664 10.59a1.651 1.651 0 010-1.186A10.004 10.004 0 0110 3c4.257 0 7.893 2.66 9.336 6.41.147.381.146.804 0 1.186A10.004 10.004 0 0110 17c-4.257 0-7.893-2.66-9.336-6.41z" clip-rule="evenodd"/></svg>
+                                View Details
+                            </button>
+                        </td>
+                    </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        @if (overviewTotalPages() > 1) {
+        <div class="jo-pagination">
+            <button class="pg-btn" [disabled]="overviewCurrentPage() === 1" (click)="ovPreviousPage()">← Prev</button>
+            @for (p of overviewTotalPagesArray(); track p) {
+                @if (overviewTotalPages() <= 7 || p === 1 || p === overviewTotalPages() || (p >= overviewCurrentPage() - 1 && p <= overviewCurrentPage() + 1)) {
+                <button class="pg-btn" [class.pg-btn--on]="p === overviewCurrentPage()" (click)="ovGoToPage(p)">{{ p }}</button>
+                }
+            }
+            <button class="pg-btn" [disabled]="overviewCurrentPage() === overviewTotalPages()" (click)="ovNextPage()">Next →</button>
+        </div>
+        }
+        }
+
+    </div>
+    }
+    <!-- end overview dashboard -->
+
+    <!-- ═══════════════════════ STATS BAR (vendor only) ═══════════════════════ -->
+    @if (!isAdminOrManager()) {
     <div class="jo-stats-bar">
         <div class="jo-stat-card">
             <span class="jo-stat-num">{{ joList().length }}</span>
@@ -442,8 +646,10 @@
         </div>
         }
     </div>
+    }
 
-    <!-- ═══════════════════════ JO LIST CARD ═══════════════════════ -->
+    <!-- ═══════════════════════ JO LIST CARD (vendor only) ═══════════════════════ -->
+    @if (!isAdminOrManager()) {
     <div class="jo-card-section">
 
         <div class="jo-card-header">
@@ -604,6 +810,8 @@
         }
 
     </div>
+    }
+    <!-- end vendor JO list -->
 
     <!-- ═══════════════════════ STAGE STATUS DETAIL ═══════════════════════ -->
     @if (selectedJo()) {

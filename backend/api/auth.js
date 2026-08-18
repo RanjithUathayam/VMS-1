@@ -1,5 +1,10 @@
 const express = require('express');
+const crypto  = require('crypto');
 const { pool, sql } = require('../db');
+
+function hashPassword(plain) {
+    return crypto.createHash('sha256').update(plain).digest('hex');
+}
 
 const router = express.Router();
 
@@ -140,31 +145,69 @@ router.post('/login/member', async (req, res) => {
     if (!username || !password) {
         return res.status(400).send({ message: 'Username and password are required.' });
     }
-    
+
     try {
         const result = await pool.request()
             .input('username', sql.NVarChar, username)
-            .input('password', sql.NVarChar, password) // Comparing plain text password for simplicity
+            .input('password', sql.NVarChar, hashPassword(password))
             .query(`
-                SELECT Username, FullName, Role
-                FROM Users
-                WHERE Username = @username AND PasswordHash = @password
+                SELECT u.Username, u.FullName, u.Role, u.PhoneNumber,
+                       ISNULL(r.Permissions, '[]') AS Permissions
+                FROM Users u
+                LEFT JOIN AppRoles r ON r.RoleName = u.Role
+                WHERE u.Username = @username
+                  AND u.PasswordHash = @password
+                  AND u.IsActive = 1
             `);
 
         if (result.recordset.length > 0) {
             const user = result.recordset[0];
+            let permissions = [];
+            try { permissions = JSON.parse(user.Permissions || '[]'); } catch {}
             return res.json({
-                username: user.username,
+                username: user.Username,
                 name: user.FullName,
-                role: user.Role
+                role: user.Role,
+                permissions,
             });
         } else {
             return res.status(401).send({ message: 'Invalid username or password.' });
         }
     } catch (err) {
+        console.error('[login/member]', err.message);
         res.status(500).send({ message: 'Server error during login.' });
     }
 });
 
+// PUT /api/auth/change-password
+router.put('/change-password', async (req, res) => {
+    const { username, currentPassword, newPassword } = req.body;
+    if (!username || !currentPassword || !newPassword) {
+        return res.status(400).json({ message: 'All fields are required.' });
+    }
+    if (newPassword.length < 4) {
+        return res.status(400).json({ message: 'New password must be at least 4 characters.' });
+    }
+    try {
+        const check = await pool.request()
+            .input('username',     sql.NVarChar, username)
+            .input('passwordHash', sql.NVarChar, hashPassword(currentPassword))
+            .query(`
+                SELECT Id FROM Users
+                WHERE Username = @username AND PasswordHash = @passwordHash AND IsActive = 1
+            `);
+        if (check.recordset.length === 0) {
+            return res.status(401).json({ message: 'Current password is incorrect.' });
+        }
+        await pool.request()
+            .input('username',        sql.NVarChar, username)
+            .input('newPasswordHash', sql.NVarChar, hashPassword(newPassword))
+            .query(`UPDATE Users SET PasswordHash = @newPasswordHash WHERE Username = @username`);
+        res.json({ success: true, message: 'Password changed successfully.' });
+    } catch (err) {
+        console.error('[change-password]', err.message);
+        res.status(500).json({ message: 'Server error.' });
+    }
+});
 
 module.exports = router;

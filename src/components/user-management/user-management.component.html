@@ -1,0 +1,661 @@
+<div class="um-container">
+
+    <!-- ═══════════════════════ PAGE HEADER ═══════════════════════ -->
+    <div class="um-page-header">
+        <div class="um-header-left">
+            <div class="um-header-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z"/>
+                </svg>
+            </div>
+            <div>
+                <h2 class="um-page-title">User Management</h2>
+                <p class="um-page-subtitle">Manage users, roles, and screen-level access permissions</p>
+            </div>
+        </div>
+        <div class="um-header-actions">
+            <button class="um-btn-refresh" (click)="refresh()" [disabled]="isLoading() || rolesLoading()">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" [class.spinning]="isLoading() || rolesLoading()">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"/>
+                </svg>
+                Refresh
+            </button>
+            @if (activeTab() === 'users') {
+            <button class="um-btn-create" (click)="openCreateForm()">
+                <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd"/></svg>
+                Create User
+            </button>
+            } @else {
+            <button class="um-btn-create um-btn-create--role" (click)="openCreateRoleForm()">
+                <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd"/></svg>
+                Create Role
+            </button>
+            }
+        </div>
+    </div>
+
+    <!-- ═══════════════════════ TABS ═══════════════════════ -->
+    <div class="um-tabs">
+        <button class="um-tab" [class.um-tab--active]="activeTab() === 'users'" (click)="activeTab.set('users')">
+            <svg viewBox="0 0 20 20" fill="currentColor"><path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z"/></svg>
+            Users
+            <span class="um-tab-badge">{{ totalUsers() }}</span>
+        </button>
+        <button class="um-tab" [class.um-tab--active]="activeTab() === 'roles'" (click)="activeTab.set('roles')">
+            <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001zm11.541 3.708a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+            Roles &amp; Permissions
+            <span class="um-tab-badge">{{ appRoles().length }}</span>
+        </button>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════
+         USERS TAB
+    ════════════════════════════════════════════════ -->
+    @if (activeTab() === 'users') {
+
+    <!-- Stats Row -->
+    <div class="um-stats-row">
+        <div class="um-stat-card">
+            <div class="um-stat-icon um-si--indigo">
+                <svg viewBox="0 0 20 20" fill="currentColor"><path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z"/></svg>
+            </div>
+            <div><div class="um-stat-num">{{ totalUsers() }}</div><div class="um-stat-lbl">Total Users</div></div>
+        </div>
+        <div class="um-stat-card">
+            <div class="um-stat-icon um-si--green">
+                <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clip-rule="evenodd"/></svg>
+            </div>
+            <div><div class="um-stat-num">{{ activeCount() }}</div><div class="um-stat-lbl">Active</div></div>
+        </div>
+        <div class="um-stat-card">
+            <div class="um-stat-icon um-si--red">
+                <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clip-rule="evenodd"/></svg>
+            </div>
+            <div><div class="um-stat-num">{{ inactiveCount() }}</div><div class="um-stat-lbl">Inactive</div></div>
+        </div>
+        <div class="um-stat-card">
+            <div class="um-stat-icon um-si--purple">
+                <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-6-3a2 2 0 11-4 0 2 2 0 014 0zm-2 4a5 5 0 00-4.546 2.916A5.986 5.986 0 0010 16a5.986 5.986 0 004.546-2.084A5 5 0 0010 11z" clip-rule="evenodd"/></svg>
+            </div>
+            <div><div class="um-stat-num">{{ adminCount() }}</div><div class="um-stat-lbl">Admins</div></div>
+        </div>
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="um-filter-bar">
+        <div class="um-search-wrap">
+            <svg class="um-search-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 15.803 7.5 7.5 0 0015.803 15.803z"/>
+            </svg>
+            <input type="text" class="um-search-input" placeholder="Search by username, name or email…"
+                [value]="searchTerm()" (input)="setFilter('search', $any($event.target).value)" />
+        </div>
+        <select class="um-select" [value]="roleFilter()" (change)="setFilter('role', $any($event.target).value)">
+            <option value="">All Roles</option>
+            @for (r of appRoles(); track r.Id) {
+            <option [value]="r.RoleName" [selected]="roleFilter() === r.RoleName">{{ r.DisplayName }}</option>
+            }
+        </select>
+        <select class="um-select" [value]="statusFilter()" (change)="setFilter('status', $any($event.target).value)">
+            <option value="">All Status</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+        </select>
+        @if (searchTerm() || roleFilter() || statusFilter()) {
+        <button class="um-clear-btn" (click)="clearFilters()">
+            <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+            Clear
+        </button>
+        }
+        <span class="um-result-count">{{ filteredUsers().length }} users</span>
+    </div>
+
+    <!-- User Table -->
+    <div class="um-table-card">
+        @if (isLoading()) {
+        <div class="um-loader-row"><div class="um-spinner"></div><span>Loading users…</span></div>
+        }
+        @if (!isLoading() && filteredUsers().length === 0) {
+        <div class="um-empty-row">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"/></svg>
+            <span>{{ searchTerm() || roleFilter() || statusFilter() ? 'No matching users' : 'No users yet. Click "Create User" to get started.' }}</span>
+        </div>
+        }
+        @if (!isLoading() && filteredUsers().length > 0) {
+        <div class="um-table-scroll">
+            <table class="um-table">
+                <thead>
+                    <tr>
+                        <th class="um-th-num">#</th>
+                        <th>User</th>
+                        <th>Contact</th>
+                        <th>Role</th>
+                        <th>Permissions</th>
+                        <th>Status</th>
+                        <th>Created</th>
+                        <th class="um-th-actions">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @for (user of filteredUsers(); track user.Id; let i = $index) {
+                    <tr class="um-tr">
+                        <td class="um-td-num">{{ i + 1 }}</td>
+                        <td>
+                            <div class="um-user-cell">
+                                <div class="um-avatar" [style.background]="roleColor(user.Role)">
+                                    {{ (user.FullName || user.Username || '?').charAt(0).toUpperCase() }}
+                                </div>
+                                <div class="um-user-info">
+                                    <span class="um-user-name">{{ user.FullName }}</span>
+                                    <span class="um-user-uname">{{ user.Username }}</span>
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="um-contact-cell">
+                                @if (user.Email) { <span class="um-contact-line">{{ user.Email }}</span> }
+                                @if (user.PhoneNumber) { <span class="um-contact-line">{{ user.PhoneNumber }}</span> }
+                                @if (!user.Email && !user.PhoneNumber) { <span class="um-no-contact">—</span> }
+                            </div>
+                        </td>
+                        <td>
+                            <span class="um-role-badge"
+                                [style.background]="roleBg(user.Role)"
+                                [style.color]="roleColor(user.Role)">
+                                {{ roleLabel(user.Role) }}
+                            </span>
+                        </td>
+                        <td>
+                            <div class="um-perm-chips">
+                                @if (rolePermissions(user.Role).length > 0) {
+                                    @for (p of rolePermissions(user.Role).slice(0, 3); track p) {
+                                    <span class="um-perm-chip">{{ screenLabel(p) }}</span>
+                                    }
+                                    @if (rolePermissions(user.Role).length > 3) {
+                                    <span class="um-perm-chip um-perm-chip--more">+{{ rolePermissions(user.Role).length - 3 }}</span>
+                                    }
+                                } @else {
+                                    <span class="um-no-contact">—</span>
+                                }
+                            </div>
+                        </td>
+                        <td>
+                            <span class="um-status-badge"
+                                [class.um-status--active]="user.IsActive"
+                                [class.um-status--inactive]="!user.IsActive">
+                                <span class="um-status-dot"></span>
+                                {{ user.IsActive ? 'Active' : 'Inactive' }}
+                            </span>
+                        </td>
+                        <td class="um-td-date">{{ user.CreatedAt ? (user.CreatedAt | date:'dd-MMM-yyyy') : '—' }}</td>
+                        <td class="um-td-actions">
+                            <div class="um-actions-wrap">
+                                <button class="um-action-btn um-action-btn--view" title="View" (click)="openViewModal(user); $event.stopPropagation()">
+                                    <svg viewBox="0 0 20 20" fill="currentColor"><path d="M10 12.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z"/><path fill-rule="evenodd" d="M.664 10.59a1.651 1.651 0 010-1.186A10.004 10.004 0 0110 3c4.257 0 7.893 2.66 9.336 6.41.147.381.146.804 0 1.186A10.004 10.004 0 0110 17c-4.257 0-7.893-2.66-9.336-6.41z" clip-rule="evenodd"/></svg>
+                                </button>
+                                <button class="um-action-btn um-action-btn--edit" title="Edit" (click)="openEditForm(user); $event.stopPropagation()">
+                                    <svg viewBox="0 0 20 20" fill="currentColor"><path d="M5.433 13.917l1.262-3.155A4 4 0 017.58 9.42l6.92-6.918a2.121 2.121 0 013 3l-6.92 6.918c-.383.383-.84.685-1.343.886l-3.154 1.262a.5.5 0 01-.65-.65z"/></svg>
+                                </button>
+                                <button class="um-action-btn" [disabled]="togglingId() === user.Id"
+                                    [class.um-action-btn--disable]="user.IsActive"
+                                    [class.um-action-btn--enable]="!user.IsActive"
+                                    [title]="user.IsActive ? 'Deactivate' : 'Activate'"
+                                    (click)="toggleActive(user); $event.stopPropagation()">
+                                    @if (togglingId() === user.Id) { <span class="um-spinner um-spinner--xs"></span> }
+                                    @else if (user.IsActive) {
+                                    <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clip-rule="evenodd"/></svg>
+                                    } @else {
+                                    <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clip-rule="evenodd"/></svg>
+                                    }
+                                </button>
+                                <button class="um-action-btn um-action-btn--reset" title="Reset Password" (click)="openResetModal(user); $event.stopPropagation()">
+                                    <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm3 8V5.5a3 3 0 10-6 0V9h6z" clip-rule="evenodd"/></svg>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        }
+    </div>
+
+    } <!-- end users tab -->
+
+    <!-- ═══════════════════════════════════════════════
+         ROLES TAB
+    ════════════════════════════════════════════════ -->
+    @if (activeTab() === 'roles') {
+
+    <!-- Role info banner -->
+    <div class="um-role-info-banner">
+        <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clip-rule="evenodd"/></svg>
+        <div>
+            <strong>Role-Based Access Control</strong>
+            Assign screens to each role. Users inherit the permissions of their assigned role. System roles cannot be deleted but their permissions can be adjusted.
+        </div>
+    </div>
+
+    <!-- Role Search -->
+    <div class="um-filter-bar">
+        <div class="um-search-wrap">
+            <svg class="um-search-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 15.803 7.5 7.5 0 0015.803 15.803z"/>
+            </svg>
+            <input type="text" class="um-search-input" placeholder="Search roles…"
+                [value]="roleSearchTerm()" (input)="roleSearchTerm.set($any($event.target).value)" />
+        </div>
+        <span class="um-result-count">{{ filteredRoles().length }} roles</span>
+    </div>
+
+    <!-- Roles Table -->
+    <div class="um-table-card">
+        @if (rolesLoading()) {
+        <div class="um-loader-row"><div class="um-spinner"></div><span>Loading roles…</span></div>
+        }
+        @if (!rolesLoading() && filteredRoles().length === 0) {
+        <div class="um-empty-row">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z"/></svg>
+            <span>{{ roleSearchTerm() ? 'No matching roles' : 'No roles found. Run the db-migrate.sql script to seed defaults.' }}</span>
+        </div>
+        }
+        @if (!rolesLoading() && filteredRoles().length > 0) {
+        <div class="um-table-scroll">
+            <table class="um-table">
+                <thead>
+                    <tr>
+                        <th class="um-th-num">#</th>
+                        <th>Role</th>
+                        <th>Description</th>
+                        <th>Screen Access</th>
+                        <th>Users</th>
+                        <th>Type</th>
+                        <th class="um-th-actions">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @for (role of filteredRoles(); track role.Id; let i = $index) {
+                    <tr class="um-tr">
+                        <td class="um-td-num">{{ i + 1 }}</td>
+                        <td>
+                            <div class="um-user-cell">
+                                <div class="um-role-avatar" [style.background]="roleColor(role.RoleName)" [style.color]="'#fff'">
+                                    {{ role.DisplayName.charAt(0).toUpperCase() }}
+                                </div>
+                                <div class="um-user-info">
+                                    <span class="um-user-name">{{ role.DisplayName }}</span>
+                                    <span class="um-user-uname">{{ role.RoleName }}</span>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="um-td-desc">{{ role.Description || '—' }}</td>
+                        <td>
+                            <div class="um-perm-grid">
+                                @for (screen of allScreens; track screen.key) {
+                                <span class="um-perm-pill"
+                                    [class.um-perm-pill--on]="role.Permissions.includes(screen.key)"
+                                    [class.um-perm-pill--off]="!role.Permissions.includes(screen.key)">
+                                    {{ screen.label }}
+                                </span>
+                                }
+                            </div>
+                        </td>
+                        <td class="um-td-num">
+                            {{ usersWithRole(role.RoleName) }}
+                        </td>
+                        <td>
+                            @if (role.IsSystem) {
+                            <span class="um-system-badge">System</span>
+                            } @else {
+                            <span class="um-custom-badge">Custom</span>
+                            }
+                        </td>
+                        <td class="um-td-actions">
+                            <div class="um-actions-wrap">
+                                <button class="um-action-btn um-action-btn--edit" title="Edit Permissions" (click)="openEditRoleForm(role); $event.stopPropagation()">
+                                    <svg viewBox="0 0 20 20" fill="currentColor"><path d="M5.433 13.917l1.262-3.155A4 4 0 017.58 9.42l6.92-6.918a2.121 2.121 0 013 3l-6.92 6.918c-.383.383-.84.685-1.343.886l-3.154 1.262a.5.5 0 01-.65-.65z"/></svg>
+                                </button>
+                                @if (!role.IsSystem) {
+                                <button class="um-action-btn um-action-btn--delete" title="Delete Role"
+                                    [disabled]="deletingRoleId() === role.Id"
+                                    (click)="deleteRole(role); $event.stopPropagation()">
+                                    @if (deletingRoleId() === role.Id) { <span class="um-spinner um-spinner--xs"></span> }
+                                    @else {
+                                    <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.807a2.75 2.75 0 002.742-2.53l.841-10.52.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l.3-7.5z" clip-rule="evenodd"/></svg>
+                                    }
+                                </button>
+                                }
+                            </div>
+                        </td>
+                    </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        }
+    </div>
+
+    } <!-- end roles tab -->
+
+</div>
+
+<!-- ═══════════════ CREATE / EDIT USER FORM PANEL ═══════════════ -->
+@if (showForm()) {
+<div class="um-overlay" (click)="closeForm()">
+    <div class="um-form-panel" (click)="$event.stopPropagation()">
+
+        <div class="um-form-header">
+            <div class="um-form-header-left">
+                <div class="um-form-icon">
+                    <svg viewBox="0 0 20 20" fill="currentColor"><path d="M5.433 13.917l1.262-3.155A4 4 0 017.58 9.42l6.92-6.918a2.121 2.121 0 013 3l-6.92 6.918c-.383.383-.84.685-1.343.886l-3.154 1.262a.5.5 0 01-.65-.65z"/></svg>
+                </div>
+                <div>
+                    <h3 class="um-form-title">{{ formTitle() }}</h3>
+                    <p class="um-form-sub">{{ formMode() === 'create' ? 'Fill in the details to create a new user account.' : 'Update user information and access settings.' }}</p>
+                </div>
+            </div>
+            <button class="um-close-btn" (click)="closeForm()">&#x2715;</button>
+        </div>
+
+        <div class="um-form-body">
+            @if (formMode() === 'create') {
+            <div class="um-field-group">
+                <label class="um-field-label">Username <span class="um-required">*</span></label>
+                <input class="um-field-input" type="text" placeholder="e.g. john.doe"
+                    [value]="form().username" (input)="setField('username', $any($event.target).value)" />
+                <span class="um-field-hint">Used to log in. Cannot be changed later.</span>
+            </div>
+            } @else {
+            <div class="um-field-group">
+                <label class="um-field-label">Username</label>
+                <div class="um-field-readonly">{{ form().username }}</div>
+            </div>
+            }
+
+            <div class="um-field-group">
+                <label class="um-field-label">Full Name <span class="um-required">*</span></label>
+                <input class="um-field-input" type="text" placeholder="Enter full name"
+                    [value]="form().fullName" (input)="setField('fullName', $any($event.target).value)" />
+            </div>
+
+            <div class="um-field-row">
+                <div class="um-field-group">
+                    <label class="um-field-label">Phone Number</label>
+                    <input class="um-field-input" type="tel" placeholder="+91 99999 00000"
+                        [value]="form().phoneNumber" (input)="setField('phoneNumber', $any($event.target).value)" />
+                </div>
+                <div class="um-field-group">
+                    <label class="um-field-label">Email</label>
+                    <input class="um-field-input" type="email" placeholder="user@example.com"
+                        [value]="form().email" (input)="setField('email', $any($event.target).value)" />
+                </div>
+            </div>
+
+            <div class="um-field-row">
+                <div class="um-field-group">
+                    <label class="um-field-label">Role <span class="um-required">*</span></label>
+                    <select class="um-field-input" [value]="form().role" (change)="setField('role', $any($event.target).value)">
+                        @if (appRoles().length > 0) {
+                            @for (r of appRoles(); track r.Id) {
+                            <option [value]="r.RoleName" [selected]="form().role === r.RoleName">{{ r.DisplayName }}</option>
+                            }
+                        } @else {
+                            <option value="admin">Administrator</option>
+                            <option value="manager">Manager</option>
+                            <option value="vendor">Vendor</option>
+                            <option value="watchman">Watchman</option>
+                            <option value="inventory">Inventory</option>
+                            <option value="operator">Operator</option>
+                        }
+                    </select>
+                </div>
+                <div class="um-field-group">
+                    <label class="um-field-label">Status</label>
+                    <div class="um-toggle-wrap">
+                        <label class="um-toggle">
+                            <input type="checkbox" [checked]="form().isActive"
+                                (change)="setField('isActive', $any($event.target).checked)" />
+                            <span class="um-toggle-slider"></span>
+                        </label>
+                        <span class="um-toggle-lbl">{{ form().isActive ? 'Active' : 'Inactive' }}</span>
+                    </div>
+                </div>
+            </div>
+
+            @if (formMode() === 'create') {
+            <div class="um-field-separator"><span>Password</span></div>
+            <div class="um-field-row">
+                <div class="um-field-group">
+                    <label class="um-field-label">Password <span class="um-required">*</span></label>
+                    <div class="um-pwd-wrap">
+                        <input class="um-field-input um-pwd-input" [type]="showPassword() ? 'text' : 'password'"
+                            placeholder="Min. 4 characters"
+                            [value]="form().password" (input)="setField('password', $any($event.target).value)" />
+                        <button class="um-pwd-eye" type="button" (click)="showPassword.set(!showPassword())">
+                            <svg viewBox="0 0 20 20" fill="currentColor"><path d="M10 12.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z"/><path fill-rule="evenodd" d="M.664 10.59a1.651 1.651 0 010-1.186A10.004 10.004 0 0110 3c4.257 0 7.893 2.66 9.336 6.41.147.381.146.804 0 1.186A10.004 10.004 0 0110 17c-4.257 0-7.893-2.66-9.336-6.41z" clip-rule="evenodd"/></svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="um-field-group">
+                    <label class="um-field-label">Confirm Password <span class="um-required">*</span></label>
+                    <div class="um-pwd-wrap">
+                        <input class="um-field-input um-pwd-input" [type]="showConfirmPassword() ? 'text' : 'password'"
+                            placeholder="Re-enter password"
+                            [value]="form().confirmPassword" (input)="setField('confirmPassword', $any($event.target).value)" />
+                        <button class="um-pwd-eye" type="button" (click)="showConfirmPassword.set(!showConfirmPassword())">
+                            <svg viewBox="0 0 20 20" fill="currentColor"><path d="M10 12.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z"/><path fill-rule="evenodd" d="M.664 10.59a1.651 1.651 0 010-1.186A10.004 10.004 0 0110 3c4.257 0 7.893 2.66 9.336 6.41.147.381.146.804 0 1.186A10.004 10.004 0 0110 17c-4.257 0-7.893-2.66-9.336-6.41z" clip-rule="evenodd"/></svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            }
+
+            @if (formError()) {
+            <div class="um-error-banner">
+                <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/></svg>
+                {{ formError() }}
+            </div>
+            }
+        </div>
+
+        <div class="um-form-footer">
+            <button class="um-btn-cancel" (click)="closeForm()">Cancel</button>
+            <button class="um-btn-save" [disabled]="isSaving()" (click)="saveUser()">
+                @if (isSaving()) { <span class="um-spinner um-spinner--xs um-spinner--white"></span> Saving… }
+                @else { {{ formMode() === 'create' ? 'Create User' : 'Save Changes' }} }
+            </button>
+        </div>
+    </div>
+</div>
+}
+
+<!-- ═══════════════ ROLE FORM PANEL ═══════════════ -->
+@if (showRoleForm()) {
+<div class="um-overlay" (click)="closeRoleForm()">
+    <div class="um-form-panel" (click)="$event.stopPropagation()">
+
+        <div class="um-form-header">
+            <div class="um-form-header-left">
+                <div class="um-form-icon um-form-icon--role">
+                    <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001zm11.541 3.708a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+                </div>
+                <div>
+                    <h3 class="um-form-title">{{ roleFormTitle() }}</h3>
+                    <p class="um-form-sub">Configure screens this role can access.</p>
+                </div>
+            </div>
+            <button class="um-close-btn" (click)="closeRoleForm()">&#x2715;</button>
+        </div>
+
+        <div class="um-form-body">
+
+            @if (roleFormMode() === 'create') {
+            <div class="um-field-group">
+                <label class="um-field-label">Role Name (slug) <span class="um-required">*</span></label>
+                <input class="um-field-input" type="text" placeholder="e.g. supervisor"
+                    [value]="roleForm().roleName" (input)="setRoleField('roleName', $any($event.target).value)" />
+                <span class="um-field-hint">Lowercase letters, numbers and underscores only. Cannot be changed after creation.</span>
+            </div>
+            } @else {
+            <div class="um-field-group">
+                <label class="um-field-label">Role Name</label>
+                <div class="um-field-readonly">{{ roleForm().roleName }}</div>
+            </div>
+            }
+
+            <div class="um-field-group">
+                <label class="um-field-label">Display Name <span class="um-required">*</span></label>
+                <input class="um-field-input" type="text" placeholder="e.g. Supervisor"
+                    [value]="roleForm().displayName" (input)="setRoleField('displayName', $any($event.target).value)" />
+            </div>
+
+            <div class="um-field-group">
+                <label class="um-field-label">Description</label>
+                <input class="um-field-input" type="text" placeholder="What can users with this role do?"
+                    [value]="roleForm().description" (input)="setRoleField('description', $any($event.target).value)" />
+            </div>
+
+            <!-- Permission Grid -->
+            <div class="um-field-separator"><span>Screen Permissions</span></div>
+
+            <div class="um-perm-header">
+                <span class="um-perm-count">{{ roleForm().permissions.length }} / {{ allScreens.length }} screens selected</span>
+                <div class="um-perm-quick">
+                    <button type="button" class="um-perm-quick-btn" (click)="selectAllPermissions()">Select All</button>
+                    <button type="button" class="um-perm-quick-btn" (click)="clearAllPermissions()">Clear All</button>
+                </div>
+            </div>
+
+            <div class="um-perm-checkbox-grid">
+                @for (screen of allScreens; track screen.key) {
+                <label class="um-perm-checkbox-item" [class.um-perm-checkbox-item--on]="isPermissionSelected(screen.key)">
+                    <input type="checkbox"
+                        [checked]="isPermissionSelected(screen.key)"
+                        (change)="togglePermission(screen.key)" />
+                    <div class="um-perm-checkbox-content">
+                        <span class="um-perm-checkbox-label">{{ screen.label }}</span>
+                        <span class="um-perm-checkbox-key">{{ screen.key }}</span>
+                    </div>
+                    @if (isPermissionSelected(screen.key)) {
+                    <svg class="um-perm-check" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clip-rule="evenodd"/></svg>
+                    }
+                </label>
+                }
+            </div>
+
+            @if (roleFormError()) {
+            <div class="um-error-banner">
+                <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/></svg>
+                {{ roleFormError() }}
+            </div>
+            }
+        </div>
+
+        <div class="um-form-footer">
+            <button class="um-btn-cancel" (click)="closeRoleForm()">Cancel</button>
+            <button class="um-btn-save um-btn-save--role" [disabled]="isRoleSaving()" (click)="saveRole()">
+                @if (isRoleSaving()) { <span class="um-spinner um-spinner--xs um-spinner--white"></span> Saving… }
+                @else { {{ roleFormMode() === 'create' ? 'Create Role' : 'Save Permissions' }} }
+            </button>
+        </div>
+    </div>
+</div>
+}
+
+<!-- ═══════════════ RESET PASSWORD MODAL ═══════════════ -->
+@if (showResetModal() && resetTargetUser()) {
+<div class="um-overlay" (click)="closeResetModal()">
+    <div class="um-modal" (click)="$event.stopPropagation()">
+        <div class="um-modal-header">
+            <div class="um-modal-title-row">
+                <div class="um-modal-icon um-modal-icon--key">
+                    <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm3 8V5.5a3 3 0 10-6 0V9h6z" clip-rule="evenodd"/></svg>
+                </div>
+                <div>
+                    <h3 class="um-modal-title">Reset Password</h3>
+                    <p class="um-modal-sub">Setting new password for <b>{{ ru().FullName }}</b></p>
+                </div>
+            </div>
+            <button class="um-close-btn" (click)="closeResetModal()">&#x2715;</button>
+        </div>
+        <div class="um-modal-body">
+            <div class="um-field-group">
+                <label class="um-field-label">New Password</label>
+                <div class="um-pwd-wrap">
+                    <input class="um-field-input um-pwd-input" [type]="showResetPwd() ? 'text' : 'password'"
+                        placeholder="Min. 4 characters"
+                        [value]="resetPassword()" (input)="resetPassword.set($any($event.target).value)" />
+                    <button class="um-pwd-eye" type="button" (click)="showResetPwd.set(!showResetPwd())">
+                        <svg viewBox="0 0 20 20" fill="currentColor"><path d="M10 12.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z"/><path fill-rule="evenodd" d="M.664 10.59a1.651 1.651 0 010-1.186A10.004 10.004 0 0110 3c4.257 0 7.893 2.66 9.336 6.41.147.381.146.804 0 1.186A10.004 10.004 0 0110 17c-4.257 0-7.893-2.66-9.336-6.41z" clip-rule="evenodd"/></svg>
+                    </button>
+                </div>
+            </div>
+            <div class="um-field-group">
+                <label class="um-field-label">Confirm New Password</label>
+                <input class="um-field-input" [type]="showResetPwd() ? 'text' : 'password'"
+                    placeholder="Re-enter new password"
+                    [value]="resetConfirm()" (input)="resetConfirm.set($any($event.target).value)" />
+            </div>
+        </div>
+        <div class="um-modal-footer">
+            <button class="um-btn-cancel" (click)="closeResetModal()">Cancel</button>
+            <button class="um-btn-save um-btn--amber" [disabled]="isResetting()" (click)="confirmResetPassword()">
+                @if (isResetting()) { <span class="um-spinner um-spinner--xs um-spinner--white"></span> Resetting… }
+                @else { Reset Password }
+            </button>
+        </div>
+    </div>
+</div>
+}
+
+<!-- ═══════════════ VIEW USER MODAL ═══════════════ -->
+@if (showViewModal() && viewUser()) {
+<div class="um-overlay" (click)="closeViewModal()">
+    <div class="um-modal um-modal--view" (click)="$event.stopPropagation()">
+        <div class="um-modal-header">
+            <div class="um-modal-title-row">
+                <div class="um-avatar um-avatar--lg" [style.background]="roleColor(vu().Role)">
+                    {{ (vu().FullName || vu().Username || '?').charAt(0).toUpperCase() }}
+                </div>
+                <div>
+                    <h3 class="um-modal-title">{{ vu().FullName }}</h3>
+                    <p class="um-modal-sub">{{ vu().Username }}</p>
+                </div>
+            </div>
+            <button class="um-close-btn" (click)="closeViewModal()">&#x2715;</button>
+        </div>
+        <div class="um-modal-body um-view-grid">
+            <div class="um-view-cell"><span class="um-view-lbl">Username</span><span class="um-view-val">{{ vu().Username }}</span></div>
+            <div class="um-view-cell"><span class="um-view-lbl">Full Name</span><span class="um-view-val">{{ vu().FullName }}</span></div>
+            <div class="um-view-cell"><span class="um-view-lbl">Email</span><span class="um-view-val">{{ vu().Email || '—' }}</span></div>
+            <div class="um-view-cell"><span class="um-view-lbl">Phone</span><span class="um-view-val">{{ vu().PhoneNumber || '—' }}</span></div>
+            <div class="um-view-cell">
+                <span class="um-view-lbl">Role</span>
+                <span class="um-role-badge" [style.background]="roleBg(vu().Role)" [style.color]="roleColor(vu().Role)">{{ roleLabel(vu().Role) }}</span>
+            </div>
+            <div class="um-view-cell">
+                <span class="um-view-lbl">Status</span>
+                <span class="um-status-badge" [class.um-status--active]="vu().IsActive" [class.um-status--inactive]="!vu().IsActive">
+                    <span class="um-status-dot"></span>{{ vu().IsActive ? 'Active' : 'Inactive' }}
+                </span>
+            </div>
+            <div class="um-view-cell um-view-cell--full">
+                <span class="um-view-lbl">Screen Access</span>
+                <div class="um-perm-chips">
+                    @if (rolePermissions(vu().Role).length > 0) {
+                        @for (p of rolePermissions(vu().Role); track p) {
+                        <span class="um-perm-chip">{{ screenLabel(p) }}</span>
+                        }
+                    } @else { <span class="um-view-val">No permissions configured</span> }
+                </div>
+            </div>
+            <div class="um-view-cell um-view-cell--full"><span class="um-view-lbl">Created</span><span class="um-view-val">{{ vu().CreatedAt ? (vu().CreatedAt | date:'dd MMMM yyyy, hh:mm a') : '—' }}</span></div>
+        </div>
+        <div class="um-modal-footer">
+            <button class="um-btn-cancel" (click)="closeViewModal()">Close</button>
+            <button class="um-btn-save" (click)="closeViewModal(); openEditForm(vu())">Edit User</button>
+        </div>
+    </div>
+</div>
+}

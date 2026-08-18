@@ -88,6 +88,42 @@ export class AuthService {
         }
     }
 
+    /** Returns true if the current user has access to the given screen key. */
+    hasPermission(screen: string): boolean {
+        const user = this.currentUser();
+        if (!user) return false;
+        const perms = user.permissions;
+        if (Array.isArray(perms) && perms.length > 0) {
+            return perms.includes(screen);
+        }
+        // Fallback for sessions without permissions (vendor OTP login or old localStorage)
+        return this.defaultPermissions(user.role, screen);
+    }
+
+    private defaultPermissions(role: string, screen: string): boolean {
+        const map: Record<string, string[]> = {
+            admin:     ['dashBoard','vendor','warehouse','gate','partyBinMaster','grnPushing','joStatus','userManagement'],
+            manager:   ['dashBoard','warehouse','joStatus'],
+            vendor:    ['vendor','joStatus'],
+            watchman:  ['dashBoard','gate'],
+            inventory: ['vendor','partyBinMaster','grnPushing'],
+            operator:  ['vendor'],
+        };
+        return (map[role] || []).includes(screen);
+    }
+
+    async changePassword(username: string, currentPassword: string, newPassword: string): Promise<{ success: boolean; message: string }> {
+        try {
+            const res: any = await firstValueFrom(
+                this.http.put(`${this.apiUrl}/auth/change-password`, { username, currentPassword, newPassword })
+            );
+            return { success: true, message: res?.message || 'Password changed.' };
+        } catch (error: any) {
+            const msg = error?.error?.message || error?.message || 'Failed to change password.';
+            return { success: false, message: msg };
+        }
+    }
+
     logout(): void {
         this.currentUser.set(null);
         localStorage.removeItem('currentUser');
