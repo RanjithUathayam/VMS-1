@@ -1,12 +1,17 @@
 const express = require('express');
 const { pool, sql } = require('../db');
+const { authenticate, authorize } = require('../middleware/auth');
+const { sendServerError } = require('../utils/respond');
 
 const router = express.Router();
+const MAX_BIN_RANGE = 5000; // guards against accidental/malicious unbounded ranges hammering the DB
+
+router.use(authenticate, authorize('partyBinMaster'));
 
 router.get('/BinList', async (req, res) => {
   try {
     const result = await pool.request().query(`
-        select 
+        select
             [Id]
             ,[BinID]
             ,[PartyName]
@@ -20,26 +25,37 @@ router.get('/BinList', async (req, res) => {
     res.status(200).json({ status: true, data: result.recordset });
 
   } catch (err) {
-    res.status(500).send({ status: false, message: err.message });
+    sendServerError(res, err, 'partyBin:BinList', 'Failed to load bin list.');
   }
 });
 
 router.get('/PartyList', async (req, res) => {
   try {
     const result = await pool.request().query(`
-        SELECT CardCode, CardFName, CardName 
-        FROM OCRD 
+        SELECT CardCode, CardFName, CardName
+        FROM OCRD
         WHERE validFor = 'Y' and CardType = 'S'
     `);
     res.status(200).json({ status: true, data: result.recordset });
 
   } catch (err) {
-    res.status(500).send({ status: false, message: err.message });
+    sendServerError(res, err, 'partyBin:PartyList', 'Failed to load party list.');
   }
 });
 
 router.post('/create', async (req, res) => {
-    const { fromBin, toBin } = req.body;
+    const fromBin = Number(req.body?.fromBin);
+    const toBin   = Number(req.body?.toBin);
+
+    if (!Number.isInteger(fromBin) || !Number.isInteger(toBin) || fromBin <= 0 || toBin <= 0) {
+        return res.status(400).json({ message: 'fromBin and toBin must be positive integers.' });
+    }
+    if (toBin < fromBin) {
+        return res.status(400).json({ message: 'toBin must be greater than or equal to fromBin.' });
+    }
+    if (toBin - fromBin + 1 > MAX_BIN_RANGE) {
+        return res.status(400).json({ message: `Range too large — maximum ${MAX_BIN_RANGE} bins per request.` });
+    }
 
     try {
         let inserted = 0;
@@ -49,7 +65,7 @@ router.post('/create', async (req, res) => {
             const binId = i.toString();
 
             const result = await pool.request()
-                .input('BinID', binId)
+                .input('BinID', sql.NVarChar, binId)
                 .query(`
                     IF NOT EXISTS (
                         SELECT 1 FROM PartyBinMaster WHERE BinID = @BinID
@@ -79,7 +95,7 @@ router.post('/create', async (req, res) => {
         });
 
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        sendServerError(res, err, 'partyBin:create', 'Failed to create bins.');
     }
 });
 
@@ -90,13 +106,17 @@ router.post('/dispatch', async (req, res) => {
         scannedBins
     } = req.body;
 
-    try 
+    if (!PartyCode || !Array.isArray(scannedBins) || !scannedBins.length) {
+        return res.status(400).json({ status: false, message: 'PartyCode and scannedBins[] are required.' });
+    }
+
+    try
     {
         for (let binId of scannedBins) {
             await pool.request()
-                .input('BinID', binId)
-                .input('PartyName', PartyName)
-                .input('PartyCode', PartyCode)
+                .input('BinID', sql.NVarChar, String(binId))
+                .input('PartyName', sql.NVarChar, PartyName)
+                .input('PartyCode', sql.NVarChar, PartyCode)
                 .query(`
                     UPDATE PartyBinMaster
                     SET
@@ -113,7 +133,7 @@ router.post('/dispatch', async (req, res) => {
             message: 'Bins dispatched successfully',
         })
     } catch (err) {
-        res.status(500).json({status: false, message: err.message});
+        sendServerError(res, err, 'partyBin:dispatch', 'Failed to dispatch bins.');
     }
 });
 

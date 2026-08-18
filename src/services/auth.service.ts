@@ -26,6 +26,11 @@ export class AuthService {
         localStorage.setItem('currentUser', JSON.stringify(user));
     }
 
+    /** Bearer token issued at login — attached to every API request by the auth interceptor. */
+    getToken(): string | null {
+        return this.currentUser()?.token || null;
+    }
+
     private handleLoginError(error: unknown) {
         if (error instanceof HttpErrorResponse) {
              // FIX: The type guard `instanceof HttpErrorResponse` should correctly narrow the type of `error`.

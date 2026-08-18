@@ -101,7 +101,7 @@ export class AppComponent {
   async submitChangePassword(): Promise<void> {
     const f = this.changePwdForm();
     if (!f.current) { this.changePwdError.set('Current password is required.'); return; }
-    if (!f.newPwd || f.newPwd.length < 4) { this.changePwdError.set('New password must be at least 4 characters.'); return; }
+    if (!f.newPwd || f.newPwd.length < 8) { this.changePwdError.set('New password must be at least 8 characters.'); return; }
     if (f.newPwd !== f.confirm) { this.changePwdError.set('Passwords do not match.'); return; }
 
     const username = this.currentUser()?.username;

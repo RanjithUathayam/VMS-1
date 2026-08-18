@@ -1,13 +1,48 @@
 const express = require('express');
 const { pool, sql } = require('../db');
+const { authenticate, authorize } = require('../middleware/auth');
+const { sendServerError } = require('../utils/respond');
 
 const router = express.Router();
 
-/* ============================================================
-   SINGLE TABLE: MaterialTransactions 
-   One row = one line item
-   All processes update the same table
-   ============================================================ */
+const INTERAKT_API_TOKEN = process.env.INTERAKT_API_TOKEN;
+const WHATSAPP_NOTIFY_PHONE = process.env.WHATSAPP_NOTIFY_PHONE;
+
+async function sendWhatsAppMessage(phoneNumber, templateName, values) {
+    if (!INTERAKT_API_TOKEN) {
+        console.error('[whatsapp] INTERAKT_API_TOKEN is not configured — message not sent.');
+        return { ok: false };
+    }
+    try {
+        const response = await fetch('https://api.interakt.ai/v1/public/message/', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Basic ${INTERAKT_API_TOKEN}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                countryCode: '+91',
+                phoneNumber: `${phoneNumber}`,
+                callbackData: 'some text here',
+                type: 'Template',
+                template: {
+                    name: templateName,
+                    languageCode: 'en',
+                    bodyValues: values,
+                    buttonValues: { '0': values }
+                }
+            })
+        });
+        return { ok: response.ok };
+    } catch (error) {
+        console.error('[whatsapp] send failed:', error);
+        return { ok: false };
+    }
+}
+
+/* All routes below require a valid session; per-route permission checks follow the
+   same screen-based model the frontend uses (vendor / warehouse / gate / dashBoard). */
+router.use(authenticate);
 
 /* ============================================================
    1. GET ALL ENTRIES (GROUPED BY DOCNUM)
@@ -45,7 +80,7 @@ router.get('/', async (req, res) => {
         res.json(Object.values(grouped));
 
     } catch (err) {
-        res.status(500).send("Server Error");
+        sendServerError(res, err, 'material-entries:list', 'Failed to load entries.');
     }
 });
 
@@ -66,9 +101,9 @@ router.get('/documents-by-party', async (req, res) => {
             .input('fromWarehouse', sql.NVarChar, fromWarehouse ?? "")
             .input('toWarehouse', sql.NVarChar, toWarehouse ?? "")
             .query(`
-                EXEC [@ASRS_Transaction] 
+                EXEC [@ASRS_Transaction]
                     @type = 'Binning',
-                    @FilterPartyCode = @partyCode, 
+                    @FilterPartyCode = @partyCode,
                     @FilterType = @docType,
                     @fromWarehouse = @fromWarehouse,
                     @toWarehouse = @toWarehouse
@@ -76,19 +111,23 @@ router.get('/documents-by-party', async (req, res) => {
 
         const docs = result.recordset;
         const docList = [...new Set(docs.map(x => x.DocNum))];
-      
+
         res.json({ status: true, data: docs, DocNumList: docList });
 
     } catch (err) {
-        res.status(500).send(err.message);
+        sendServerError(res, err, 'material-entries:documents-by-party', 'Failed to load documents.');
     }
 });
 
 /* ============================================================
    3. POST NEW VENDOR ENTRY
    ============================================================ */
-router.post('/', async (req, res) => {
-    const { docType, docEntry, docNumber, docDate, partyCode, partyName, totalQuantity, lineItems, mobileNumber, NoOfBox, SupplierDcNo } = req.body;
+router.post('/', authorize('vendor'), async (req, res) => {
+    const { docType, docEntry, docNumber, docDate, partyCode, partyName, totalQuantity, lineItems, NoOfBox, SupplierDcNo } = req.body;
+
+    if (!docNumber || !partyCode || !Array.isArray(lineItems) || !lineItems.length) {
+        return res.status(400).json({ status: false, message: 'docNumber, partyCode, and lineItems[] are required.' });
+    }
 
     try {
         const entryDate = new Date();
@@ -128,7 +167,7 @@ router.post('/', async (req, res) => {
 
                 .input("CreatedBy", sql.NVarChar, partyName)
                 .input("CreatedAt", sql.DateTime, entryDate)
-                .input("NoOfBox", NoOfBox)
+                .input("NoOfBox", sql.Int, NoOfBox || null)
 
                 .query(`
                     INSERT INTO MaterialTransactions (
@@ -153,58 +192,29 @@ router.post('/', async (req, res) => {
                 `);
         }
 
-        const response = await fetch('https://api.interakt.ai/v1/public/message/', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Basic (YVZ3OEVGOGJTWDRDSFBybk0zVUFCSVplbFVPeE9lMEN3T0QyX0dFdVhlbzo=)`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                "countryCode": "+91",
-                "phoneNumber": `7358108757`,
-                "callbackData": "some text here",
-                "type": "Template",
-                "template": {
-                    "name": "dc_arrival_notification",
-                    "languageCode": "en",
-                    "bodyValues": [
-                        `${docNumber}`,
-                        `${partyName}`,
-                        `${totalQuantity}`,
-                        `${'https://vms.uathayam.in:4300/WEB/'}`
-                    ],
-                    "buttonValues": {
-                        "0": [
-                            `${docNumber}`,
-                            `${partyName}`,
-                            `${totalQuantity}`,
-                            `${'https://vms.uathayam.in:4300/WEB/'}`
-                        ]
-                    }
-                }
-            })
-        });
+        const { ok } = await sendWhatsAppMessage(WHATSAPP_NOTIFY_PHONE, 'dc_arrival_notification', [
+            `${docNumber}`, `${partyName}`, `${totalQuantity}`, 'https://vms.uathayam.in:4300/WEB/'
+        ]);
 
-        if (!response.ok) 
-        {
-            const errorBody = await response.text();
-            return res.status(202).send({status: false, message: 'Failed to send Entry Message to WhatsApp.' });
+        if (!ok) {
+            return res.status(202).send({ status: false, message: 'Entry saved, but failed to send notification message.' });
         }
 
         res.status(200).json({ status: true, message: "Entry saved" });
 
-    } 
+    }
     catch (err) {
-        res.status(500).send({ status: false, message: err.message });
+        sendServerError(res, err, 'material-entries:create', 'Failed to save entry.');
     }
 });
 
 /* ============================================================
    4. PUT – WAREHOUSE APPROVAL
    ============================================================ */
-router.put('/:EntryId/approve', async (req, res) => {
-    const { expectedReceiveDate, warehouseAddress, approvedBy, partyCode, docNum } = req.body;
+router.put('/:EntryId/approve', authorize('warehouse'), async (req, res) => {
+    const { expectedReceiveDate, warehouseAddress, partyCode, docNum } = req.body;
     const { EntryId } = req.params;
+    const approvedBy = req.user?.name || req.user?.username || 'System';
 
     try {
         await pool.request()
@@ -215,7 +225,7 @@ router.put('/:EntryId/approve', async (req, res) => {
             .input("ApprovedAt", sql.DateTime, new Date())
             .query(`
                 UPDATE MaterialTransactions
-                SET 
+                SET
                     Status='Approved',
                     ExpectedReceiveDate=@ExpectedReceiveDate,
                     WarehouseAddress=@WarehouseAddress,
@@ -223,15 +233,15 @@ router.put('/:EntryId/approve', async (req, res) => {
                     ApprovedAt=@ApprovedAt
                 WHERE EntryId=@EntryId;
             `);
-        
+
         const resultVendor = await pool.request()
             .input('partyCode', sql.NVarChar, partyCode)
             .query(`
-                SELECT TOP 1 Phone1, Phone2, CardName FROM OCRD 
+                SELECT TOP 1 Phone1, Phone2, CardName FROM OCRD
                 WHERE CardCode = @partyCode AND validFor = 'Y' AND CardType = 'S'
             `);
-        
-        if (resultVendor.recordset.length === 0) 
+
+        if (resultVendor.recordset.length === 0)
         {
             return res.status(404).send({ message: 'Vendor not found or not valid.' });
         }
@@ -240,62 +250,30 @@ router.put('/:EntryId/approve', async (req, res) => {
 
         const mobileNumber = Phone1 || Phone2;
 
-        if (!mobileNumber) 
+        if (!mobileNumber)
         {
             return res.status(400).send({ message: 'Vendor phone number missing.' });
         }
 
-        const response = await fetch('https://api.interakt.ai/v1/public/message/', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Basic (YVZ3OEVGOGJTWDRDSFBybk0zVUFCSVplbFVPeE9lMEN3T0QyX0dFdVhlbzo=)`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                "countryCode": "+91",
-                "phoneNumber": `${mobileNumber}`,
-                "callbackData": "some text here",
-                "type": "Template",
-                "template": {
-                    "name": "dc_vendor_confirmation",
-                    "languageCode": "en",
-                    "bodyValues": [
-                        `${CardName}`,
-                        `${docNum}`,
-                        `${expectedReceiveDate}`,
-                        `${warehouseAddress}`,
-                        `${'https://vms.uathayam.in:4300/WEB/'}`
-                    ],
-                    "buttonValues": {
-                        "0": [
-                            `${CardName}`,
-                            `${docNum}`,
-                            `${expectedReceiveDate}`,
-                            `${warehouseAddress}`,
-                            `${'https://vms.uathayam.in:4300/WEB/'}`
-                        ]
-                    }
-                }
-            })
-        });
+        const { ok } = await sendWhatsAppMessage(mobileNumber, 'dc_vendor_confirmation', [
+            `${CardName}`, `${docNum}`, `${expectedReceiveDate}`, `${warehouseAddress}`, 'https://vms.uathayam.in:4300/WEB/'
+        ]);
 
-        if (!response.ok) 
-        {
-            const errorBody = await response.text();
-            return res.status(500).send({ message: 'Failed to send Approve message to WhatsApp.' });
+        if (!ok) {
+            return res.status(500).send({ message: 'Approved, but failed to send confirmation message to vendor.' });
         }
 
         res.json({ status: true });
 
     } catch (err) {
-        res.status(500).send(err.message);
+        sendServerError(res, err, 'material-entries:approve', 'Failed to approve entry.');
     }
 });
 
 /* ============================================================
    5. PUT – DISPATCH
    ============================================================ */
-router.put('/dispatch/:EntryId', async (req, res) => {
+router.put('/dispatch/:EntryId', authorize('vendor'), async (req, res) => {
     const { EntryId } = req.params;
 
     try {
@@ -311,25 +289,25 @@ router.put('/dispatch/:EntryId', async (req, res) => {
         res.json({ status: true });
 
     } catch (err) {
-        res.status(500).send(err.message);
+        sendServerError(res, err, 'material-entries:dispatch', 'Failed to dispatch entry.');
     }
 });
 
 /* ============================================================
    6. PUT – GATE INWARD
    ============================================================ */
-router.put('/gate-inward/:EntryId', async (req, res) => {
+router.put('/gate-inward/:EntryId', authorize('gate'), async (req, res) => {
     const { EntryId } = req.params;
-    const { AuthorizedBy } = req.body;
+    const authorizedBy = req.user?.name || req.user?.username || 'System';
 
     try {
         await pool.request()
             .input("EntryId", sql.BigInt, EntryId)
             .input("GateInwardDate", sql.DateTime, new Date())
-            .input("AuthorizedBy", sql.NVarChar, AuthorizedBy)
+            .input("AuthorizedBy", sql.NVarChar, authorizedBy)
             .query(`
                 UPDATE MaterialTransactions
-                SET 
+                SET
                     Status='Received',
                     GateInwardDate=@GateInwardDate,
                     AuthorizedBy=@AuthorizedBy,
@@ -340,14 +318,14 @@ router.put('/gate-inward/:EntryId', async (req, res) => {
         res.json({ status: true });
 
     } catch (err) {
-        res.status(500).send(err.message);
+        sendServerError(res, err, 'material-entries:gate-inward', 'Failed to confirm gate receipt.');
     }
 });
 
 /* ============================================================
    7. PUT – SAP UPDATE
    ============================================================ */
-router.put('/:docNum/sap-update', async (req, res) => {
+router.put('/:docNum/sap-update', authorize('grnPushing'), async (req, res) => {
     const { docNum } = req.params;
     const { SAPDocType, SAPDocEntry, SAPDocNum, SAPStatus } = req.body;
 
@@ -371,14 +349,14 @@ router.put('/:docNum/sap-update', async (req, res) => {
         res.json({ status: true });
 
     } catch (err) {
-        res.status(500).send(err.message);
+        sendServerError(res, err, 'material-entries:sap-update', 'Failed to update SAP status.');
     }
 });
 
 router.get('/warehouses', async (req, res) => {
   try {
     const result = await pool.request().query(`
-        select 
+        select
             t0.WhsCode,
             t0.WhsName,
             t0.AddrType,
@@ -388,14 +366,14 @@ router.get('/warehouses', async (req, res) => {
             t0.Building,
             t0.City,
             t0.ZipCode,
-            t0.[State] 
-        FROM [BBLive].[dbo].owhs as t0 
+            t0.[State]
+        FROM [BBLive].[dbo].owhs as t0
         where t0.Inactive='N'
     `);
     res.json({ status: true, data: result.recordset });
 
   } catch (err) {
-    res.status(500).send("Server Error");
+    sendServerError(res, err, 'material-entries:warehouses', 'Failed to load warehouses.');
   }
 });
 
@@ -414,20 +392,24 @@ router.get('/schedule-count', async (req, res) => {
                     GROUP BY EntryId, TotalQuantity
                 ) AS x;
             `);
-            
-        res.json({ 
-            status: true, 
-            total: result.recordset[0].TotalScheduled || 0 
+
+        res.json({
+            status: true,
+            total: result.recordset[0].TotalScheduled || 0
         });
-    } 
-    catch (err) 
+    }
+    catch (err)
     {
-        res.status(500).send(err.message);
+        sendServerError(res, err, 'material-entries:schedule-count', 'Failed to load schedule count.');
     }
 });
 
-router.get('/getDashboardData', async (req, res) => {
+router.get('/getDashboardData', authorize('dashBoard'), async (req, res) => {
     const { fromDate, toDate, docType, status } = req.query;
+
+    if (!fromDate || !toDate) {
+        return res.status(400).json({ status: false, message: 'fromDate and toDate are required.' });
+    }
 
     try {
         let query = `
@@ -442,21 +424,21 @@ router.get('/getDashboardData', async (req, res) => {
                 WHERE CreatedAt >= @fromDate
                 AND CreatedAt <= DATEADD(DAY, 1, @toDate)
         `;
-        
+
         const request = pool.request();
-        request.input('fromDate', fromDate);
-        request.input('toDate', toDate);
+        request.input('fromDate', sql.Date, fromDate);
+        request.input('toDate', sql.Date, toDate);
 
         // DocType filter
         if (docType && docType !== 'All') {
             query += ` AND Type = @docType`;
-            request.input('docType', docType);
+            request.input('docType', sql.NVarChar, docType);
         }
 
         // Status filter
         if (status && status !== 'All') {
             query += ` AND Status = @status`;
-            request.input('status', status);
+            request.input('status', sql.NVarChar, status);
         }
 
         query += `
@@ -473,26 +455,27 @@ router.get('/getDashboardData', async (req, res) => {
         });
 
     } catch (err) {
-        res.status(500).json({
-            status: false,
-            message: err.message
-        });
+        sendServerError(res, err, 'material-entries:dashboard', 'Failed to load dashboard data.');
     }
 });
 
-router.post("/deleteVendorEntry", async (req, res) => {
+router.post("/deleteVendorEntry", authorize('vendor'), async (req, res) => {
     const { EntryId } = req.body;
+
+    if (!EntryId) {
+        return res.status(400).json({ status: false, message: 'EntryId is required.' });
+    }
 
     try {
         const result = await pool.request()
-        .input('EntryId', EntryId)
+        .input('EntryId', sql.BigInt, EntryId)
         .query(`
             DELETE FROM MaterialTransactions
             WHERE EntryId = @EntryId
             AND Status = 'Pending'
         `);
 
-        // ✅ rowsAffected is the ONLY correct check
+        // rowsAffected is the ONLY correct check
         if (result.rowsAffected[0] === 0) {
         return res.status(404).json({
             status: false,
@@ -506,10 +489,7 @@ router.post("/deleteVendorEntry", async (req, res) => {
         });
 
     } catch (err) {
-        res.status(500).json({
-            status: false,
-            message: err.message
-        });
+        sendServerError(res, err, 'material-entries:delete', 'Failed to delete entry.');
     }
 });
 

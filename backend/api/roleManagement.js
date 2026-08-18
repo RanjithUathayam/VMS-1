@@ -1,5 +1,7 @@
 const express = require('express');
 const { pool, sql } = require('../db');
+const { authenticate, authorize } = require('../middleware/auth');
+const { sendServerError } = require('../utils/respond');
 
 const router = express.Router();
 
@@ -13,6 +15,8 @@ const ALL_SCREENS = [
     { key: 'joStatus',        label: 'JO Status' },
     { key: 'userManagement',  label: 'User Management' },
 ];
+
+router.use(authenticate, authorize('userManagement'));
 
 /* ──────────────────────────────────────────────────────────
    GET /api/roles/screens  –  list available app screens
@@ -37,8 +41,7 @@ router.get('/list', async (_req, res) => {
         }));
         res.json({ status: 1, data: roles });
     } catch (err) {
-        console.error('[roles/list]', err.message);
-        res.status(500).json({ status: 0, message: err.message });
+        sendServerError(res, err, 'roles/list', 'Failed to load roles.');
     }
 });
 
@@ -76,8 +79,7 @@ router.post('/create', async (req, res) => {
 
         res.json({ status: 1, message: 'Role created successfully.' });
     } catch (err) {
-        console.error('[roles/create]', err.message);
-        res.status(500).json({ status: 0, message: err.message });
+        sendServerError(res, err, 'roles/create', 'Failed to create role.');
     }
 });
 
@@ -113,8 +115,7 @@ router.put('/update/:id', async (req, res) => {
         }
         res.json({ status: 1, message: 'Role updated successfully.' });
     } catch (err) {
-        console.error('[roles/update]', err.message);
-        res.status(500).json({ status: 0, message: err.message });
+        sendServerError(res, err, 'roles/update', 'Failed to update role.');
     }
 });
 
@@ -153,8 +154,7 @@ router.delete('/delete/:id', async (req, res) => {
 
         res.json({ status: 1, message: 'Role deleted successfully.' });
     } catch (err) {
-        console.error('[roles/delete]', err.message);
-        res.status(500).json({ status: 0, message: err.message });
+        sendServerError(res, err, 'roles/delete', 'Failed to delete role.');
     }
 });
 

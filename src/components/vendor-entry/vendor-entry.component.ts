@@ -533,7 +533,7 @@ export class VendorEntryComponent {
         this.isLoading.set(true);
         try {
             Swal.fire({ title: 'CreateEntry ...', didOpen: () => Swal.showLoading(), allowOutsideClick: false });
-            console.log("this.supplierDcNo()",this.supplierDcNo())
+         
             const user = this.currentUser();
             await this.api.createEntry({
                 docType: this.docType(),

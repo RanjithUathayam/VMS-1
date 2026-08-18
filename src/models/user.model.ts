@@ -9,4 +9,6 @@ export interface User {
   partyCode?: string;
   // Member-specific properties
   username?: string;
+  // Session token issued by the backend on login — required on every subsequent API call
+  token?: string;
 }

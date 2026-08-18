@@ -1,6 +1,9 @@
 const express = require('express');
 const router  = express.Router();
 const { pool, sql } = require('../db');
+const { authenticate, authorize } = require('../middleware/auth');
+
+router.use(authenticate, authorize('joStatus'));
 
 let tablesReady = false;
 
@@ -147,9 +150,10 @@ async function getPool() {
 router.post('/createJo', async (req, res) => {
     const {
         docType, docNum, vendorCode, vendorName, style,
-        orderQty, entryDate, createdBy,
+        orderQty, entryDate,
         fabricPreparation, remarks
     } = req.body;
+    const createdBy = req.user?.name || req.user?.username || 'System';
 
     if (!docNum || !orderQty) {
         return res.status(400).json({ status: 0, message: 'Document number and order quantity are required' });
@@ -226,7 +230,7 @@ router.post('/createJo', async (req, res) => {
         }
     } catch (err) {
         console.error('JO createJo error:', err);
-        res.status(500).json({ status: 0, message: err.message });
+        res.status(500).json({ status: 0, message: "An unexpected error occurred. Please try again later." });
     }
 });
 
@@ -263,14 +267,15 @@ router.post('/list', async (req, res) => {
         res.json({ status: 1, data: result.recordset });
     } catch (err) {
         console.error('JO list error:', err);
-        res.status(500).json({ status: 0, message: err.message });
+        res.status(500).json({ status: 0, message: "An unexpected error occurred. Please try again later." });
     }
 });
 
 // ── POST /saveStage1 ───────────────────────────────────────
 // Stage 1 (Fabric Preparation) — total qty entry only
 router.post('/saveStage1', async (req, res) => {
-    const { joId, joNo, qty, updatedBy } = req.body;
+    const { joId, joNo, qty } = req.body;
+    const updatedBy = req.user?.name || req.user?.username || 'System';
     if (!joId) return res.status(400).json({ status: 0, message: 'joId is required' });
 
     const qtyNum = Math.max(0, Number(qty) || 0);
@@ -316,14 +321,15 @@ router.post('/saveStage1', async (req, res) => {
         }
     } catch (err) {
         console.error('saveStage1 error:', err);
-        res.status(500).json({ status: 0, message: err.message });
+        res.status(500).json({ status: 0, message: "An unexpected error occurred. Please try again later." });
     }
 });
 
 // ── POST /saveLineEntry ────────────────────────────────────
 // Stages 2–6: add a line-wise / time-wise production entry
 router.post('/saveLineEntry', async (req, res) => {
-    const { joId, stage, lineNo, entryTime, qty, createdBy } = req.body;
+    const { joId, stage, lineNo, entryTime, qty } = req.body;
+    const createdBy = req.user?.name || req.user?.username || 'System';
 
     if (!joId || !stage) {
         return res.status(400).json({ status: 0, message: 'joId and stage are required' });
@@ -396,7 +402,7 @@ router.post('/saveLineEntry', async (req, res) => {
         }
     } catch (err) {
         console.error('saveLineEntry error:', err);
-        res.status(500).json({ status: 0, message: err.message });
+        res.status(500).json({ status: 0, message: "An unexpected error occurred. Please try again later." });
     }
 });
 
@@ -418,7 +424,7 @@ router.post('/getLineEntries', async (req, res) => {
         res.json({ status: 1, data: result.recordset });
     } catch (err) {
         console.error('getLineEntries error:', err);
-        res.status(500).json({ status: 0, message: err.message });
+        res.status(500).json({ status: 0, message: "An unexpected error occurred. Please try again later." });
     }
 });
 
@@ -474,14 +480,15 @@ router.post('/deleteLineEntry', async (req, res) => {
         }
     } catch (err) {
         console.error('deleteLineEntry error:', err);
-        res.status(500).json({ status: 0, message: err.message });
+        res.status(500).json({ status: 0, message: "An unexpected error occurred. Please try again later." });
     }
 });
 
 // ── POST /saveMatrixEntries ────────────────────────────────
 // Batch insert colour × size entries for stages 2–6
 router.post('/saveMatrixEntries', async (req, res) => {
-    const { joId, stage, lineNo, entryTime, createdBy, entries } = req.body;
+    const { joId, stage, lineNo, entryTime, entries } = req.body;
+    const createdBy = req.user?.name || req.user?.username || 'System';
 
     if (!joId || !stage || !Array.isArray(entries) || !entries.length) {
         return res.status(400).json({ status: 0, message: 'joId, stage, and entries[] are required' });
@@ -587,13 +594,14 @@ router.post('/saveMatrixEntries', async (req, res) => {
         }
     } catch (err) {
         console.error('saveMatrixEntries error:', err);
-        res.status(500).json({ status: 0, message: err.message });
+        res.status(500).json({ status: 0, message: "An unexpected error occurred. Please try again later." });
     }
 });
 
 // ── POST /saveStatus (legacy, kept for compatibility) ──────
 router.post('/saveStatus', async (req, res) => {
-    const { joId, joNo, fabricPreparation, updatedBy, remarks } = req.body;
+    const { joId, joNo, fabricPreparation, remarks } = req.body;
+    const updatedBy = req.user?.name || req.user?.username || 'System';
     if (!joId) return res.status(400).json({ status: 0, message: 'joId is required' });
 
     const fp = Math.max(0, Number(fabricPreparation) || 0);
@@ -638,7 +646,7 @@ router.post('/saveStatus', async (req, res) => {
         }
     } catch (err) {
         console.error('JO saveStatus error:', err);
-        res.status(500).json({ status: 0, message: err.message });
+        res.status(500).json({ status: 0, message: "An unexpected error occurred. Please try again later." });
     }
 });
 
@@ -669,7 +677,7 @@ router.post('/deleteJo', async (req, res) => {
         }
     } catch (err) {
         console.error('JO deleteJo error:', err);
-        res.status(500).json({ status: 0, message: err.message });
+        res.status(500).json({ status: 0, message: "An unexpected error occurred. Please try again later." });
     }
 });
 
@@ -692,13 +700,14 @@ router.post('/history', async (req, res) => {
         res.json({ status: 1, data: result.recordset });
     } catch (err) {
         console.error('JO history error:', err);
-        res.status(500).json({ status: 0, message: err.message });
+        res.status(500).json({ status: 0, message: "An unexpected error occurred. Please try again later." });
     }
 });
 
 // ── POST /createVendorEntry ───────────────────────────────────
 router.post('/createVendorEntry', async (req, res) => {
-    const { joId, createdBy } = req.body;
+    const { joId } = req.body;
+    const createdBy = req.user?.name || req.user?.username || 'System';
     if (!joId) return res.status(400).json({ status: 0, message: 'joId is required' });
 
     try {
@@ -787,7 +796,7 @@ router.post('/createVendorEntry', async (req, res) => {
         }
     } catch (err) {
         console.error('createVendorEntry error:', err);
-        res.status(500).json({ status: 0, message: err.message });
+        res.status(500).json({ status: 0, message: "An unexpected error occurred. Please try again later." });
     }
 });
 

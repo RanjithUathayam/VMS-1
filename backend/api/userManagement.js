@@ -1,13 +1,17 @@
 const express = require('express');
-const crypto  = require('crypto'); // built-in Node.js module, no install needed
+const bcrypt  = require('bcryptjs');
 const { pool, sql } = require('../db');
+const { authenticate, authorize } = require('../middleware/auth');
+const { sendServerError } = require('../utils/respond');
 
 const router = express.Router();
+const BCRYPT_ROUNDS = 12;
 
-/** SHA-256 hash — keeps passwords out of plain-text without requiring bcrypt install */
-function hashPassword(plain) {
-    return crypto.createHash('sha256').update(plain).digest('hex');
+async function hashPassword(plain) {
+    return bcrypt.hash(plain, BCRYPT_ROUNDS);
 }
+
+router.use(authenticate, authorize('userManagement'));
 
 /* ──────────────────────────────────────────────────────────
    GET /api/users/list
@@ -23,8 +27,7 @@ router.get('/list', async (req, res) => {
         `);
         res.json({ status: 1, data: result.recordset });
     } catch (err) {
-        console.error('Users list error:', err);
-        res.status(500).json({ status: 0, message: err.message });
+        sendServerError(res, err, 'users/list', 'Failed to load users.');
     }
 });
 
@@ -37,6 +40,9 @@ router.post('/create', async (req, res) => {
 
     if (!username || !fullName || !password || !role) {
         return res.status(400).json({ status: 0, message: 'Username, Full Name, Password, and Role are required.' });
+    }
+    if (password.length < 8) {
+        return res.status(400).json({ status: 0, message: 'Password must be at least 8 characters.' });
     }
 
     try {
@@ -59,7 +65,7 @@ router.post('/create', async (req, res) => {
             .input('fullName',    sql.NVarChar, fullName.trim())
             .input('phoneNumber', sql.NVarChar, phoneNumber ? phoneNumber.trim() : '')
             .input('email',       sql.NVarChar, email ? email.trim() : '')
-            .input('passwordHash',sql.NVarChar, hashPassword(password))
+            .input('passwordHash',sql.NVarChar, await hashPassword(password))
             .input('role',        sql.NVarChar, role)
             .input('isActive',    sql.Bit,      isActive !== false ? 1 : 0)
             .query(`
@@ -69,8 +75,7 @@ router.post('/create', async (req, res) => {
 
         res.json({ status: 1, message: 'User created successfully.' });
     } catch (err) {
-        console.error('Create user error:', err);
-        res.status(500).json({ status: 0, message: err.message });
+        sendServerError(res, err, 'users/create', 'Failed to create user.');
     }
 });
 
@@ -118,8 +123,7 @@ router.put('/update/:id', async (req, res) => {
         }
         res.json({ status: 1, message: 'User updated successfully.' });
     } catch (err) {
-        console.error('Update user error:', err);
-        res.status(500).json({ status: 0, message: err.message });
+        sendServerError(res, err, 'users/update', 'Failed to update user.');
     }
 });
 
@@ -139,8 +143,7 @@ router.put('/toggle-status/:id', async (req, res) => {
 
         res.json({ status: 1, message: `User ${isActive ? 'activated' : 'deactivated'} successfully.` });
     } catch (err) {
-        console.error('Toggle status error:', err);
-        res.status(500).json({ status: 0, message: err.message });
+        sendServerError(res, err, 'users/toggle-status', 'Failed to update user status.');
     }
 });
 
@@ -152,20 +155,19 @@ router.put('/reset-password/:id', async (req, res) => {
     const { id } = req.params;
     const { newPassword } = req.body;
 
-    if (!newPassword || newPassword.length < 4) {
-        return res.status(400).json({ status: 0, message: 'Password must be at least 4 characters.' });
+    if (!newPassword || newPassword.length < 8) {
+        return res.status(400).json({ status: 0, message: 'Password must be at least 8 characters.' });
     }
 
     try {
         await pool.request()
             .input('id',           sql.Int,      parseInt(id))
-            .input('passwordHash', sql.NVarChar, hashPassword(newPassword))
+            .input('passwordHash', sql.NVarChar, await hashPassword(newPassword))
             .query(`UPDATE Users SET PasswordHash = @passwordHash WHERE Id = @id`);
 
         res.json({ status: 1, message: 'Password reset successfully.' });
     } catch (err) {
-        console.error('Reset password error:', err);
-        res.status(500).json({ status: 0, message: err.message });
+        sendServerError(res, err, 'users/reset-password', 'Failed to reset password.');
     }
 });
 

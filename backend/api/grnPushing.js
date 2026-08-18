@@ -1,11 +1,17 @@
 const express = require('express');
 const axios   = require('axios');
 const { pool, sql }  = require('../db');        // existing pool → WMS_Uathayam (BBSAPSERVER)
-const { getWmsPool } = require('../db-wms');     // second pool  → WMS (10.0.10.203)
+const { getWmsPool } = require('../db-wms');     // second pool  → secondary WMS database
+const { authenticate, authorize } = require('../middleware/auth');
+const { sendServerError } = require('../utils/respond');
 
 const router = express.Router();
 
 const ERP_API_URL = process.env.ERP_API_URL || '';
+const ERP_CLIENT_ID = process.env.ERP_CLIENT_ID;
+const ERP_CLIENT_SECRET = process.env.ERP_CLIENT_SECRET;
+
+router.use(authenticate, authorize('grnPushing'));
 
 /* ------------------------------------------------------------------ */
 /*  HELPERS                                                            */
@@ -14,11 +20,12 @@ const ERP_API_URL = process.env.ERP_API_URL || '';
 const fetchBearerToken = async () => {
     try {
         const response = await axios.get(
-            `${ERP_API_URL}token?clientId=UathayamERP1&clientSecret=korlG/uMmkGC4OHbFXkXKw==`
+            `${ERP_API_URL}token`,
+            { params: { clientId: ERP_CLIENT_ID, clientSecret: ERP_CLIENT_SECRET } }
         );
         return { TokenNo: response.data, status: 1 };
     } catch (error) {
-        return { status: 0, message: error.message };
+        return { status: 0, message: 'Failed to fetch ERP token' };
     }
 };
 
@@ -77,7 +84,8 @@ router.post('/getGRNPushingList', async (req, res) => {
             data: result.recordset
         });
     } catch (error) {
-        return res.status(202).json({ status: 0, message: error.message });
+        console.error('[getGRNPushingList]', error);
+        return res.status(202).json({ status: 0, message: 'Failed to fetch GRN Pushing list.' });
     }
 });
 
@@ -100,8 +108,6 @@ router.post('/getGRNPushingDetails', async (req, res) => {
         // Pass docEntry as Int — stored proc expects a numeric DocEntry
         const docEntryInt = parseInt(docEntry, 10);
 
-        console.log('[GRN Details] params:', { docEntry: docEntryInt, type, process, status });
-
         // Try WMS pool (10.0.10.203) first; fall back to primary pool if empty
         const pool2 = await getWmsPool();
         let result = await pool2.request()
@@ -119,7 +125,6 @@ router.post('/getGRNPushingDetails', async (req, res) => {
 
         // If WMS returned nothing, try the primary DB (WMS_Uathayam)
         if (!result.recordset.length) {
-            console.log('[GRN Details] WMS returned 0 rows — retrying on primary DB');
             try {
                 result = await pool.request()
                     .input('type',     sql.NVarChar, type)
@@ -136,8 +141,6 @@ router.post('/getGRNPushingDetails', async (req, res) => {
             } catch (_) { /* ignore fallback error — return original empty result */ }
         }
 
-        console.log('[GRN Details] rows returned:', result.recordset.length);
-
         return res.status(200).json({
             status:  1,
             message: result.recordset.length
@@ -146,7 +149,8 @@ router.post('/getGRNPushingDetails', async (req, res) => {
             data: result.recordset
         });
     } catch (error) {
-        return res.status(202).json({ status: 0, message: error.message });
+        console.error('[getGRNPushingDetails]', error);
+        return res.status(202).json({ status: 0, message: 'Failed to fetch GRN Pushing details.' });
     }
 });
 
@@ -159,9 +163,9 @@ router.post('/createGRNPushingTransaction', async (req, res) => {
         const type      = req.body?.type      || 'Binning';
         const process   = req.body?.process   || 'GRPO';
         const status    = req.body?.status    || 'Pending';
-        // User info comes from the request body (no auth middleware yet)
-        const reqUserId  = req.body?.userId   || 0;
-        const reqUserName = req.body?.userName || 'system';
+        // User identity comes from the authenticated session, never from client-supplied body fields.
+        const reqUserId   = req.user?.id || 0;
+        const reqUserName = req.user?.username || req.user?.name || 'system';
 
         if (docEntry === undefined || docEntry === null || docEntry === '') {
             return res.status(202).json({ status: 0, message: 'docEntry is required' });
@@ -316,7 +320,8 @@ router.post('/createGRNPushingTransaction', async (req, res) => {
 
     } catch (error) {
         try { await transaction.rollback(); } catch (_) { /* already rolled back */ }
-        return res.status(202).json({ status: 0, message: error.message });
+        console.error('[createGRNPushingTransaction]', error);
+        return res.status(202).json({ status: 0, message: 'Failed to create GRN Pushing transaction.' });
     }
 });
 

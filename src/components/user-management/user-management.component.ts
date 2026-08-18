@@ -242,7 +242,7 @@ export class UserManagementComponent implements OnInit {
         if (this.formMode() === 'create') {
             if (!f.username.trim()) return 'Username is required.';
             if (!f.password) return 'Password is required.';
-            if (f.password.length < 4) return 'Password must be at least 4 characters.';
+            if (f.password.length < 8) return 'Password must be at least 8 characters.';
             if (f.password !== f.confirmPassword) return 'Passwords do not match.';
         }
         return '';
@@ -319,8 +319,8 @@ export class UserManagementComponent implements OnInit {
     async confirmResetPassword(): Promise<void> {
         const pwd  = this.resetPassword();
         const conf = this.resetConfirm();
-        if (!pwd || pwd.length < 4) {
-            Swal.fire({ icon: 'warning', text: 'Password must be at least 4 characters.' }); return;
+        if (!pwd || pwd.length < 8) {
+            Swal.fire({ icon: 'warning', text: 'Password must be at least 8 characters.' }); return;
         }
         if (pwd !== conf) {
             Swal.fire({ icon: 'warning', text: 'Passwords do not match.' }); return;

@@ -430,7 +430,7 @@
                     <label class="um-field-label">Password <span class="um-required">*</span></label>
                     <div class="um-pwd-wrap">
                         <input class="um-field-input um-pwd-input" [type]="showPassword() ? 'text' : 'password'"
-                            placeholder="Min. 4 characters"
+                            placeholder="Min. 8 characters"
                             [value]="form().password" (input)="setField('password', $any($event.target).value)" />
                         <button class="um-pwd-eye" type="button" (click)="showPassword.set(!showPassword())">
                             <svg viewBox="0 0 20 20" fill="currentColor"><path d="M10 12.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z"/><path fill-rule="evenodd" d="M.664 10.59a1.651 1.651 0 010-1.186A10.004 10.004 0 0110 3c4.257 0 7.893 2.66 9.336 6.41.147.381.146.804 0 1.186A10.004 10.004 0 0110 17c-4.257 0-7.893-2.66-9.336-6.41z" clip-rule="evenodd"/></svg>
@@ -584,7 +584,7 @@
                 <label class="um-field-label">New Password</label>
                 <div class="um-pwd-wrap">
                     <input class="um-field-input um-pwd-input" [type]="showResetPwd() ? 'text' : 'password'"
-                        placeholder="Min. 4 characters"
+                        placeholder="Min. 8 characters"
                         [value]="resetPassword()" (input)="resetPassword.set($any($event.target).value)" />
                     <button class="um-pwd-eye" type="button" (click)="showResetPwd.set(!showResetPwd())">
                         <svg viewBox="0 0 20 20" fill="currentColor"><path d="M10 12.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z"/><path fill-rule="evenodd" d="M.664 10.59a1.651 1.651 0 010-1.186A10.004 10.004 0 0110 3c4.257 0 7.893 2.66 9.336 6.41.147.381.146.804 0 1.186A10.004 10.004 0 0110 17c-4.257 0-7.893-2.66-9.336-6.41z" clip-rule="evenodd"/></svg>
