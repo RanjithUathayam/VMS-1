@@ -14,6 +14,13 @@ const db = require('./db');
 const app = express();
 const port = process.env.API_PORT || 3001;
 
+// Behind a reverse proxy (IIS / nginx), set TRUST_PROXY to the number of proxy hops (usually 1)
+// so rate limits key on the real client IP instead of the proxy's.
+if (process.env.TRUST_PROXY) {
+    const hops = parseInt(process.env.TRUST_PROXY, 10);
+    app.set('trust proxy', Number.isNaN(hops) ? process.env.TRUST_PROXY : hops);
+}
+
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
     .split(',')
     .map(o => o.trim())

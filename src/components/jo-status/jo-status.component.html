@@ -942,7 +942,7 @@
                         (input)="stage1Qty.set(+$any($event.target).value || 0)"
                         placeholder="0" />
                     <span class="suc-unit">pcs</span>
-                    <button class="btn-save-s1" [disabled]="isSavingStage1()" (click)="saveStage1Qty()">
+                    <button class="btn-save-s1" [disabled]="isSavingStage1() || stage1ValidationError() !== null" (click)="saveStage1Qty()">
                         @if (isSavingStage1()) {
                         <span class="jo-spinner jo-spinner--xs jo-spinner--white"></span>
                         Saving…
@@ -952,6 +952,9 @@
                         }
                     </button>
                 </div>
+                @if (stage1ValidationError(); as s1Err) {
+                <div class="smt-validation-error">{{ s1Err }}</div>
+                }
                 @if (stage1Result()) {
                 <div class="suc-s1-result"
                     [class.suc-s1-result--ok]="stage1Result()!.status === 1"
@@ -994,11 +997,10 @@
                     <div class="suc-head-left">
                         <span class="suc-badge" [style.background]="stageColors[idx + 1]">{{ idx + 2 }}</span>
                         <span class="suc-name">{{ stage.label }}</span>
-                        @if (prevStageQty(stage.key) > 0) {
-                        <span class="suc-limit-badge">
+                        <span class="suc-limit-badge"
+                            [title]="'Limited by ' + prevStageLabel(stage.key) + ' completed qty'">
                             Max {{ prevStageQty(stage.key) }} pcs
                         </span>
-                        }
                     </div>
                     <div class="suc-head-right">
                         @if (stageLineTotal(stage.key) > 0) {
@@ -1031,12 +1033,10 @@
                             [class.smt-grand--over]="matrixValidationError(stage.key, egrid) !== null">
                             <span class="smt-grand-label">Total</span>
                             <span class="smt-grand-val">{{ matrixGrandTotal(egrid) }} pcs</span>
-                            @if (prevStageQty(stage.key) > 0) {
                             <span class="smt-capacity-hint"
                                 [class.smt-capacity-hint--over]="matrixValidationError(stage.key, egrid) !== null">
                                 max {{ stageCapacityRemaining(stage.key) }} pcs
                             </span>
-                            }
                         </div>
                         <button class="btn-confirm-entry" [style.--sc]="stageColors[idx + 1]"
                             [disabled]="isAddingEntry() || matrixGrandTotal(egrid) === 0 || matrixValidationError(stage.key, egrid) !== null"
@@ -1081,12 +1081,17 @@
                                         }
                                     </td>
                                     @for (sz of egrid.sizes; track sz) {
-                                    <td class="smt-td-input">
+                                    <td class="smt-td-input" [class.smt-td-input--over]="isCellOver(stage.key, row, sz)">
                                         <input class="smt-qty-input" type="number" min="0" placeholder="0"
                                             [value]="getMatrixQty(row.colour, sz) || ''"
                                             (input)="setMatrixQty(row.colour, sz, $any($event.target).value)" />
                                         @if (row.sizes[sz]) {
                                         <span class="smt-ref-qty"><b>/ {{ row.sizes[sz] }}</b></span>
+                                        }
+                                        @if (isSizeWiseStage(stage.key)) {
+                                        <span class="smt-avail-qty" title="Available from {{ prevStageLabel(stage.key) }}">
+                                            avail {{ cellAvailable(stage.key, row, sz) }}
+                                        </span>
                                         }
                                     </td>
                                     }

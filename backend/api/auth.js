@@ -61,6 +61,8 @@ const otpRequestLimiter = rateLimit({
 const loginLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     limit: 10,
+    // Only failed attempts count — staff sharing one office/proxy IP must not lock each other out.
+    skipSuccessfulRequests: true,
     standardHeaders: true,
     legacyHeaders: false,
     message: { message: 'Too many login attempts. Please try again later.' },
@@ -80,7 +82,7 @@ router.post('/send-otp', otpRequestLimiter, async (req, res) => {
             .input('mobileNumber', sql.NVarChar, mobileNumber)
             .query(`
                 SELECT TOP 1 CardCode FROM OCRD
-                WHERE (Phone1 = @mobileNumber OR Phone2 = @mobileNumber) AND validFor = 'Y'
+                WHERE (Phone1 = @mobileNumber OR Phone2 = @mobileNumber) AND validFor = 'Y' AND CardType = 'S'
             `);
 
         if (result.recordset.length === 0) {
@@ -92,7 +94,7 @@ router.post('/send-otp', otpRequestLimiter, async (req, res) => {
     }
 
     // 2. Generate and store OTP
-    const otp = Math.floor(1000 + Math.random() * 9000).toString(); // 4-digit OTP
+    const otp = crypto.randomInt(1000, 10000).toString(); // 4-digit OTP, CSPRNG
     const expires = Date.now() + 5 * 60 * 1000; // 5 minute expiry
     otpStore.set(mobileNumber, { otp, expires, attempts: 0 });
 
@@ -278,7 +280,8 @@ router.put('/change-password', authenticate, async (req, res) => {
         const currentOk = user ? await verifyAndMigratePassword(currentPassword, user.PasswordHash) : false;
 
         if (!user || !currentOk) {
-            return res.status(401).json({ message: 'Current password is incorrect.' });
+            // 400, not 401 — the session is valid; a 401 would make the client log the user out.
+            return res.status(400).json({ message: 'Current password is incorrect.' });
         }
 
         const newHash = await hashPassword(newPassword);

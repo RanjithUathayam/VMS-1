@@ -92,6 +92,7 @@
                     <input
                       type="tel"
                       placeholder="10-digit mobile number"
+                      autocomplete="tel-national"
                       required
                       class="block w-full rounded-md border-gray-300 py-3 pl-10 pr-3 shadow-sm
                              focus:border-[#002E5B] focus:ring-[#002E5B]"
@@ -136,6 +137,8 @@
                     <input
                       type="tel"
                       placeholder="4-digit OTP"
+                      inputmode="numeric"
+                      autocomplete="one-time-code"
                       required
                       class="block w-full rounded-md border-gray-300 py-3 pl-10 pr-3 shadow-sm
                              focus:border-[#002E5B] focus:ring-[#002E5B]"
@@ -156,6 +159,14 @@
                   }
                 </button>
 
+                <button
+                  type="button"
+                  (click)="changeNumber()"
+                  [disabled]="isLoading()"
+                  class="w-full text-center text-sm font-medium text-[#002E5B] hover:underline disabled:opacity-50">
+                  Change number / resend OTP
+                </button>
+
               </form>
 
             }
@@ -174,6 +185,7 @@
                 <input
                   type="text"
                   placeholder="Username"
+                  autocomplete="username"
                   required
                   class="block w-full rounded-md border-gray-300 py-3 pl-10 pr-3 shadow-sm
                          focus:border-[#002E5B] focus:ring-[#002E5B]"
@@ -189,6 +201,7 @@
                 <input
                   type="password"
                   placeholder="Password"
+                  autocomplete="current-password"
                   required
                   class="block w-full rounded-md border-gray-300 py-3 pl-10 pr-3 shadow-sm
                          focus:border-[#002E5B] focus:ring-[#002E5B]"

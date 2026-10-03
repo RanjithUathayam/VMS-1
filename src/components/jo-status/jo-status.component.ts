@@ -338,32 +338,138 @@ export class JoStatusComponent implements OnInit {
         return this.stageEntries(stage).reduce((s: number, e: any) => s + (e.Qty || 0), 0);
     }
 
-    // Previous stage's completed qty (0 = no limit or stage 1)
+    // Previous stage's completed qty (0 = previous stage has nothing completed yet)
     prevStageQty(stageKey: string): number {
         const jo  = this.selectedJo();
         const col = PREV_STAGE_COL[stageKey];
         return jo && col ? (Number(jo[col]) || 0) : 0;
     }
 
+    prevStageLabel(stageKey: string): string {
+        const idx = STAGES.findIndex(s => s.key === stageKey);
+        return idx > 0 ? STAGES[idx - 1].label : '';
+    }
+
     // Remaining capacity = prevStageQty − already-saved entries for this stage
     stageCapacityRemaining(stageKey: string): number {
-        const prev = this.prevStageQty(stageKey);
-        if (!prev) return Infinity;
-        return Math.max(0, prev - this.stageLineTotal(stageKey));
+        if (!PREV_STAGE_COL[stageKey]) return Infinity;
+        return Math.max(0, this.prevStageQty(stageKey) - this.stageLineTotal(stageKey));
+    }
+
+    // ── Size-wise (colour × sleeve × size) limits ───────────
+    // Apply from Sewing Assembly onward — Fusing's previous stage (Fabric) has no size breakdown.
+    private cellKey(colour: any, slive: any, size: any): string {
+        return [colour, slive, size].map(v => String(v ?? '').trim().toUpperCase()).join('|||');
+    }
+
+    // Saved qty per stage per colour/sleeve/size cell
+    readonly stageCellTotals = computed<Record<string, Record<string, number>>>(() => {
+        const out: Record<string, Record<string, number>> = {};
+        for (const e of this.lineEntries()) {
+            const m = out[e.Stage || ''] || (out[e.Stage || ''] = {});
+            const k = this.cellKey(e.Colour, e.Slive, e.Size);
+            m[k] = (m[k] || 0) + (Number(e.Qty) || 0);
+        }
+        return out;
+    });
+
+    isSizeWiseStage(stageKey: string): boolean {
+        return STAGES.findIndex(s => s.key === stageKey) >= 2;
+    }
+
+    // Qty still available for this cell = previous stage's cell qty − this stage's saved cell qty
+    cellAvailable(stageKey: string, row: LineGridRow, size: string): number {
+        const idx = STAGES.findIndex(s => s.key === stageKey);
+        if (idx < 2) return Infinity;
+        const k      = this.cellKey(row.displayColour, row.slive, size);
+        const totals = this.stageCellTotals();
+        return Math.max(0, (totals[STAGES[idx - 1].key]?.[k] || 0) - (totals[stageKey]?.[k] || 0));
+    }
+
+    isCellOver(stageKey: string, row: LineGridRow, size: string): boolean {
+        return this.getMatrixQty(row.colour, size) > this.cellAvailable(stageKey, row, size);
     }
 
     // Validation error for the current matrix input; null = OK
     matrixValidationError(stageKey: string, grid: LineGrid): string | null {
+        const totalErr = this.matrixTotalError(stageKey, grid);
+        if (totalErr) return totalErr;
+        if (!this.isSizeWiseStage(stageKey)) return null;
+
+        const over: string[] = [];
+        for (const row of grid.rows) {
+            for (const size of grid.sizes) {
+                const qty = this.getMatrixQty(row.colour, size);
+                if (!qty) continue;
+                const avail = this.cellAvailable(stageKey, row, size);
+                if (qty > avail) {
+                    const label = [row.displayColour, row.slive, size].filter(Boolean).join(' / ');
+                    over.push(`${label}: entered ${qty}, available ${avail}`);
+                }
+            }
+        }
+        if (!over.length) return null;
+        return `Size-wise qty exceeds ${this.prevStageLabel(stageKey)} completed qty — ` +
+               over.slice(0, 5).join('; ') + (over.length > 5 ? `; +${over.length - 5} more` : '') + '.';
+    }
+
+    private matrixTotalError(stageKey: string, grid: LineGrid): string | null {
+        if (!PREV_STAGE_COL[stageKey]) return null;
         const prev = this.prevStageQty(stageKey);
-        if (!prev) return null;
+        if (prev <= 0) {
+            return `${this.prevStageLabel(stageKey)} has no completed qty yet. ` +
+                   `Complete the previous stage before adding entries here.`;
+        }
         const saved    = this.stageLineTotal(stageKey);
         const entering = this.matrixGrandTotal(grid);
         const total    = saved + entering;
         if (total > prev) {
-            const allowed = prev - saved;
+            const allowed = Math.max(0, prev - saved);
             return `Entry total (${entering} pcs) exceeds available capacity. ` +
-                   `Previous stage completed: ${prev} pcs, already saved: ${saved} pcs, ` +
+                   `${this.prevStageLabel(stageKey)} completed: ${prev} pcs, already saved: ${saved} pcs, ` +
                    `maximum you can add: ${allowed} pcs.`;
+        }
+        return null;
+    }
+
+    // Stage 1 must stay within Order Qty and not drop below Fusing's saved qty
+    stage1ValidationError = computed<string | null>(() => {
+        const jo = this.selectedJo();
+        if (!jo) return null;
+        const qty      = this.stage1Qty() || 0;
+        const orderQty = Number(jo.OrderQty) || 0;
+        const fusing   = Number(jo.FusingComponent) || 0;
+        if (orderQty > 0 && qty > orderQty) {
+            return `Fabric qty (${qty}) exceeds Order Qty (${orderQty}).`;
+        }
+        if (qty < fusing) {
+            return `Fabric qty cannot be less than ${fusing} pcs — Fusing & Component Preparation already has ${fusing} pcs recorded.`;
+        }
+        return null;
+    });
+
+    // Deleting an entry must not leave its stage below the next stage's saved qty
+    deleteValidationError(entryId: number, stageKey: string): string | null {
+        const idx  = STAGES.findIndex(s => s.key === stageKey);
+        const next = STAGES[idx + 1];
+        if (!next) return null;
+        const entry   = this.stageEntries(stageKey).find((e: any) => e.Id === entryId);
+        const after   = this.stageLineTotal(stageKey) - (Number(entry?.Qty) || 0);
+        const nextQty = this.stageLineTotal(next.key);
+        if (after < nextQty) {
+            return `${STAGES[idx].label} would drop to ${after} pcs, but ${next.label} already has ${nextQty} pcs recorded. ` +
+                   `Delete ${next.label} entries first.`;
+        }
+        if (entry && this.isSizeWiseStage(next.key)) {
+            const k         = this.cellKey(entry.Colour, entry.Slive, entry.Size);
+            const totals    = this.stageCellTotals();
+            const cellAfter = (totals[stageKey]?.[k] || 0) - (Number(entry.Qty) || 0);
+            const cellNext  = totals[next.key]?.[k] || 0;
+            if (cellAfter < cellNext) {
+                const label = [entry.Colour, entry.Slive, entry.Size].filter(Boolean).join(' / ');
+                return `${label}: ${STAGES[idx].label} would drop to ${cellAfter} pcs, but ${next.label} already has ` +
+                       `${cellNext} pcs recorded for this colour/size. Delete ${next.label} entries first.`;
+            }
         }
         return null;
     }
@@ -772,9 +878,9 @@ export class JoStatusComponent implements OnInit {
         const jo = this.selectedJo();
         if (!jo) return;
 
-        if (this.isOverQty()) {
-            Swal.fire({ icon: 'warning', title: 'Quantity Exceeded',
-                text: `Total (${this.totalStageQty()}) would exceed Order Qty (${jo.OrderQty})` });
+        const s1Err = this.stage1ValidationError();
+        if (s1Err) {
+            Swal.fire({ icon: 'warning', title: 'Invalid Quantity', text: s1Err });
             return;
         }
 
@@ -801,7 +907,7 @@ export class JoStatusComponent implements OnInit {
                 if (updated) this.selectedJo.set({ ...updated });
             }
         } catch (err: any) {
-            this.stage1Result.set({ status: 0, message: err?.message || 'Error saving' });
+            this.stage1Result.set({ status: 0, message: err?.error?.message || err?.message || 'Error saving' });
         } finally {
             this.isSavingStage1.set(false);
             this.cdr.markForCheck();
@@ -906,7 +1012,7 @@ export class JoStatusComponent implements OnInit {
                 this.addEntryResult.set({ status: 0, message: res?.message || 'Failed to save entries' });
             }
         } catch (err: any) {
-            this.addEntryResult.set({ status: 0, message: err?.message || 'Error saving entries' });
+            this.addEntryResult.set({ status: 0, message: err?.error?.message || err?.message || 'Error saving entries' });
         } finally {
             this.isAddingEntry.set(false);
             this.cdr.markForCheck();
@@ -916,6 +1022,12 @@ export class JoStatusComponent implements OnInit {
     async removeLineEntry(entryId: number, stage: string): Promise<void> {
         const jo = this.selectedJo();
         if (!jo) return;
+
+        const delErr = this.deleteValidationError(entryId, stage);
+        if (delErr) {
+            Swal.fire({ icon: 'warning', title: 'Cannot Delete Entry', text: delErr });
+            return;
+        }
 
         const { isConfirmed } = await Swal.fire({
             icon: 'warning',
@@ -939,7 +1051,7 @@ export class JoStatusComponent implements OnInit {
                 Swal.fire({ icon: 'error', text: res?.message || 'Delete failed' });
             }
         } catch (err: any) {
-            Swal.fire({ icon: 'error', text: err?.message || 'Error deleting entry' });
+            Swal.fire({ icon: 'error', text: err?.error?.message || err?.message || 'Error deleting entry' });
         }
         this.cdr.markForCheck();
     }

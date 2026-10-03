@@ -24,6 +24,141 @@ const PREV_COL_MAP = {
     packingDispatch:  'QualityFinishing',
 };
 
+// Maps each JO_StageStatus column → the column of the NEXT stage
+const NEXT_COL_MAP = {
+    FabricPreparation: 'FusingComponent',
+    FusingComponent:   'SewingAssembly',
+    SewingAssembly:    'FinishingSewing',
+    FinishingSewing:   'QualityFinishing',
+    QualityFinishing:  'PackingDispatch',
+};
+
+const COL_LABELS = {
+    FabricPreparation: 'Fabric Preparation',
+    FusingComponent:   'Fusing & Component Preparation',
+    SewingAssembly:    'Sewing Assembly',
+    FinishingSewing:   'Finishing Sewing',
+    QualityFinishing:  'Quality & Finishing',
+    PackingDispatch:   'Packing & Dispatch',
+};
+
+// Reads the JO's stage quantities inside the given transaction, locking the row so
+// concurrent saves for the same JO are validated one at a time.
+async function readStageRow(transaction, joId) {
+    const r = await transaction.request()
+        .input('joId_lock', sql.Int, joId)
+        .query(`
+            SELECT TOP 1
+                ISNULL(FabricPreparation, 0) AS FabricPreparation,
+                ISNULL(FusingComponent,   0) AS FusingComponent,
+                ISNULL(SewingAssembly,    0) AS SewingAssembly,
+                ISNULL(FinishingSewing,   0) AS FinishingSewing,
+                ISNULL(QualityFinishing,  0) AS QualityFinishing,
+                ISNULL(PackingDispatch,   0) AS PackingDispatch
+            FROM JO_StageStatus WITH (UPDLOCK, HOLDLOCK)
+            WHERE JO_Id = @joId_lock
+            ORDER BY UpdatedAt DESC
+        `);
+    return r.recordset[0] || {
+        FabricPreparation: 0, FusingComponent: 0, SewingAssembly: 0,
+        FinishingSewing: 0, QualityFinishing: 0, PackingDispatch: 0,
+    };
+}
+
+// Returns an error message when adding `addQty` to `stage` would exceed the
+// previous stage's completed qty; null when OK.
+function stageCapacityError(row, stage, addQty) {
+    const col     = STAGE_COL_MAP[stage];
+    const prevCol = PREV_COL_MAP[stage];
+    const prevQty    = Number(row[prevCol]) || 0;
+    const currentQty = Number(row[col])     || 0;
+    if (prevQty <= 0) {
+        return `${COL_LABELS[prevCol]} has no completed qty yet. ` +
+               `Complete the previous stage before adding ${COL_LABELS[col]} entries.`;
+    }
+    if (currentQty + addQty > prevQty) {
+        const allowed = Math.max(0, prevQty - currentQty);
+        return `Entry total (${addQty} pcs) exceeds available capacity. ` +
+               `${COL_LABELS[prevCol]} completed: ${prevQty} pcs, already saved this stage: ${currentQty} pcs, ` +
+               `maximum allowed: ${allowed} pcs.`;
+    }
+    return null;
+}
+
+// Returns an error message when reducing `col` to `newQty` would leave it below
+// the next stage's saved qty; null when OK.
+function downstreamError(row, col, newQty) {
+    const nextCol = NEXT_COL_MAP[col];
+    if (!nextCol) return null;
+    const nextQty = Number(row[nextCol]) || 0;
+    if (newQty < nextQty) {
+        return `${COL_LABELS[col]} cannot go below ${nextQty} pcs — ` +
+               `${COL_LABELS[nextCol]} already has ${nextQty} pcs recorded. ` +
+               `Reduce ${COL_LABELS[nextCol]} first.`;
+    }
+    return null;
+}
+
+// ── Size-wise (colour × sleeve × size) validation ──────────
+// Applies from Sewing Assembly onward — Fusing's previous stage (Fabric Preparation)
+// is a single total with no size breakdown.
+const STAGE_ORDER = [
+    'fabricPreparation', 'fusingComponent', 'sewingAssembly',
+    'finishingSewing', 'qualityFinishing', 'packingDispatch',
+];
+const isSizeWiseStage = stage => STAGE_ORDER.indexOf(stage) >= 2;
+const prevStageKey    = stage => STAGE_ORDER[STAGE_ORDER.indexOf(stage) - 1];
+const nextStageKey    = stage => STAGE_ORDER[STAGE_ORDER.indexOf(stage) + 1];
+const stageLabel      = stage => COL_LABELS[STAGE_COL_MAP[stage]] || stage;
+
+const cellKey   = (colour, slive, size) =>
+    [colour, slive, size].map(v => String(v ?? '').trim().toUpperCase()).join('|||');
+const cellLabel = (colour, slive, size) =>
+    [colour, slive, size].map(v => String(v ?? '').trim()).filter(Boolean).join(' / ') || '(no colour/size)';
+
+// Returns { [stage]: { [cellKey]: qty } } for every stage of the JO
+async function readCellTotals(transaction, joId) {
+    const r = await transaction.request()
+        .input('joId_cells', sql.Int, joId)
+        .query(`
+            SELECT Stage, Colour, Slive, Size, SUM(Qty) AS Qty
+            FROM JO_LineEntries
+            WHERE JO_Id = @joId_cells
+            GROUP BY Stage, Colour, Slive, Size
+        `);
+    const out = {};
+    for (const row of r.recordset) {
+        const m = out[row.Stage] || (out[row.Stage] = {});
+        const k = cellKey(row.Colour, row.Slive, row.Size);
+        m[k] = (m[k] || 0) + (Number(row.Qty) || 0);
+    }
+    return out;
+}
+
+// Returns an error message when any colour/size cell being added exceeds what the
+// previous stage completed for that same cell; null when OK.
+function sizeWiseCapacityError(cells, stage, entries) {
+    const prev     = prevStageKey(stage);
+    const incoming = {};
+    const labels   = {};
+    for (const e of entries) {
+        const k = cellKey(e.colour, e.slive, e.size);
+        incoming[k] = (incoming[k] || 0) + Number(e.qty);
+        labels[k]   = cellLabel(e.colour, e.slive, e.size);
+    }
+    const over = [];
+    for (const [k, qty] of Object.entries(incoming)) {
+        const avail = Math.max(0, (cells[prev]?.[k] || 0) - (cells[stage]?.[k] || 0));
+        if (qty > avail) over.push(`${labels[k]}: entered ${qty}, available ${avail}`);
+    }
+    if (!over.length) return null;
+    return `Size-wise qty exceeds ${stageLabel(prev)} completed qty — ` +
+           over.slice(0, 5).join('; ') +
+           (over.length > 5 ? `; +${over.length - 5} more` : '') + '.';
+}
+
+class ValidationError extends Error {}
+
 async function ensureTables() {
     // JO_Master
     await pool.request().query(`
@@ -146,13 +281,50 @@ async function getPool() {
     return pool;
 }
 
+// ── Vendor data scoping ────────────────────────────────────
+// Vendors only see/touch JOs raised against their own party code (CardCode).
+// Admin, manager and inventory users see all JOs.
+const isVendor = user => user?.role === 'vendor';
+
+// Rejects any request carrying a joId that belongs to another vendor.
+router.use(async (req, res, next) => {
+    if (!isVendor(req.user)) return next();
+
+    const partyCode = String(req.user.partyCode || '').trim();
+    if (!partyCode) return res.status(403).json({ status: 0, message: 'Vendor account has no party code.' });
+
+    const joId = req.body?.joId;
+    if (!joId) return next();
+
+    try {
+        const p = await getPool();
+        const r = await p.request()
+            .input('joId_own', sql.Int, joId)
+            .query('SELECT VendorCode FROM JO_Master WHERE Id = @joId_own');
+        const owner = String(r.recordset[0]?.VendorCode || '').trim();
+        if (owner !== partyCode) {
+            return res.status(403).json({ status: 0, message: 'You do not have access to this JO.' });
+        }
+        return next();
+    } catch (err) {
+        console.error('JO vendor access check error:', err);
+        res.status(500).json({ status: 0, message: "An unexpected error occurred. Please try again later." });
+    }
+});
+
 // ── POST /createJo ─────────────────────────────────────────
 router.post('/createJo', async (req, res) => {
     const {
-        docType, docNum, vendorCode, vendorName, style,
+        docType, docNum, style,
         orderQty, entryDate,
         fabricPreparation, remarks
     } = req.body;
+    let { vendorCode, vendorName } = req.body;
+    // Vendors can only raise JOs against themselves
+    if (isVendor(req.user)) {
+        vendorCode = req.user.partyCode;
+        vendorName = req.user.name || vendorName;
+    }
     const createdBy = req.user?.name || req.user?.username || 'System';
 
     if (!docNum || !orderQty) {
@@ -238,7 +410,10 @@ router.post('/createJo', async (req, res) => {
 router.post('/list', async (req, res) => {
     try {
         const p = await getPool();
-        const result = await p.request().query(`
+        const vendorOnly = isVendor(req.user);
+        const request = p.request();
+        if (vendorOnly) request.input('partyCode', sql.NVarChar, String(req.user.partyCode || '').trim());
+        const result = await request.query(`
             SELECT
                 m.Id, m.JO_No, m.DocType, m.DocNum,
                 m.VendorCode, m.VendorName, m.Style,
@@ -262,6 +437,7 @@ router.post('/list', async (req, res) => {
                 FROM JO_StageStatus
             ) s ON s.JO_Id = m.Id AND s.rn = 1
             WHERE m.Status = 'Active'
+              ${vendorOnly ? 'AND LTRIM(RTRIM(m.VendorCode)) = @partyCode' : ''}
             ORDER BY m.CreatedAt DESC
         `);
         res.json({ status: 1, data: result.recordset });
@@ -286,6 +462,18 @@ router.post('/saveStage1', async (req, res) => {
         await transaction.begin();
 
         try {
+            // Fabric qty must stay within Order Qty and not drop below Fusing's saved qty
+            const orderRes = await transaction.request()
+                .input('joId_o', sql.Int, joId)
+                .query('SELECT OrderQty FROM JO_Master WHERE Id = @joId_o');
+            const orderQty = Number(orderRes.recordset[0]?.OrderQty) || 0;
+            if (orderQty > 0 && qtyNum > orderQty) {
+                throw new ValidationError(`Fabric qty (${qtyNum}) exceeds order quantity (${orderQty})`);
+            }
+            const stageRow = await readStageRow(transaction, joId);
+            const downErr  = downstreamError(stageRow, 'FabricPreparation', qtyNum);
+            if (downErr) throw new ValidationError(downErr);
+
             // UPSERT JO_StageStatus — update FabricPreparation in-place, preserve other columns
             await transaction.request()
                 .input('joId', sql.Int,      joId)
@@ -320,6 +508,7 @@ router.post('/saveStage1', async (req, res) => {
             throw err;
         }
     } catch (err) {
+        if (err instanceof ValidationError) return res.status(400).json({ status: 0, message: err.message });
         console.error('saveStage1 error:', err);
         res.status(500).json({ status: 0, message: "An unexpected error occurred. Please try again later." });
     }
@@ -338,6 +527,11 @@ router.post('/saveLineEntry', async (req, res) => {
     const col = STAGE_COL_MAP[stage];
     if (!col) return res.status(400).json({ status: 0, message: `Invalid stage: ${stage}` });
 
+    // Total-only entries can't be checked size-wise
+    if (isSizeWiseStage(stage)) {
+        return res.status(400).json({ status: 0, message: `${stageLabel(stage)} requires colour/size-wise entry` });
+    }
+
     const qtyNum = Math.max(0, Number(qty) || 0);
     if (qtyNum <= 0) return res.status(400).json({ status: 0, message: 'Qty must be greater than 0' });
 
@@ -347,6 +541,9 @@ router.post('/saveLineEntry', async (req, res) => {
         await transaction.begin();
 
         try {
+            const capErr = stageCapacityError(await readStageRow(transaction, joId), stage, qtyNum);
+            if (capErr) throw new ValidationError(capErr);
+
             const insRes = await transaction.request()
                 .input('joId',      sql.Int,      joId)
                 .input('stage',     sql.NVarChar, stage)
@@ -401,6 +598,7 @@ router.post('/saveLineEntry', async (req, res) => {
             throw err;
         }
     } catch (err) {
+        if (err instanceof ValidationError) return res.status(400).json({ status: 0, message: err.message });
         console.error('saveLineEntry error:', err);
         res.status(500).json({ status: 0, message: "An unexpected error occurred. Please try again later." });
     }
@@ -445,6 +643,35 @@ router.post('/deleteLineEntry', async (req, res) => {
         await transaction.begin();
 
         try {
+            const entryRes = await transaction.request()
+                .input('entryId_c', sql.Int,      entryId)
+                .input('joId_c',    sql.Int,      joId)
+                .input('stage_c',   sql.NVarChar, stage)
+                .query('SELECT Qty, Colour, Slive, Size FROM JO_LineEntries WHERE Id = @entryId_c AND JO_Id = @joId_c AND Stage = @stage_c');
+            if (!entryRes.recordset.length) throw new ValidationError('Entry not found for this JO / stage');
+            const entry = entryRes.recordset[0];
+
+            // Deleting must not leave this stage below what the next stage has already recorded
+            const stageRow = await readStageRow(transaction, joId);
+            const newQty   = (Number(stageRow[col]) || 0) - (Number(entry.Qty) || 0);
+            const downErr  = downstreamError(stageRow, col, newQty);
+            if (downErr) throw new ValidationError(downErr);
+
+            // ...and the same per colour/size when the next stage is size-wise limited
+            const next = nextStageKey(stage);
+            if (next && isSizeWiseStage(next)) {
+                const cells   = await readCellTotals(transaction, joId);
+                const k       = cellKey(entry.Colour, entry.Slive, entry.Size);
+                const after   = (cells[stage]?.[k] || 0) - (Number(entry.Qty) || 0);
+                const nextQty = cells[next]?.[k] || 0;
+                if (after < nextQty) {
+                    throw new ValidationError(
+                        `${cellLabel(entry.Colour, entry.Slive, entry.Size)}: ${stageLabel(stage)} would drop to ${after} pcs, ` +
+                        `but ${stageLabel(next)} already has ${nextQty} pcs recorded. Delete ${stageLabel(next)} entries first.`
+                    );
+                }
+            }
+
             await transaction.request()
                 .input('entryId', sql.Int, entryId)
                 .query('DELETE FROM JO_LineEntries WHERE Id = @entryId');
@@ -479,6 +706,7 @@ router.post('/deleteLineEntry', async (req, res) => {
             throw err;
         }
     } catch (err) {
+        if (err instanceof ValidationError) return res.status(400).json({ status: 0, message: err.message });
         console.error('deleteLineEntry error:', err);
         res.status(500).json({ status: 0, message: "An unexpected error occurred. Please try again later." });
     }
@@ -503,40 +731,23 @@ router.post('/saveMatrixEntries', async (req, res) => {
     }
 
     const newTotal  = validEntries.reduce((s, e) => s + Number(e.qty), 0);
-    const prevCol   = PREV_COL_MAP[stage];
 
     try {
         const p = await getPool();
-
-        // Validate against previous stage's completed qty
-        if (prevCol) {
-            const statusRow = await p.request()
-                .input('joId_v', sql.Int, joId)
-                .query(`
-                    SELECT ISNULL(${prevCol}, 0) AS PrevQty,
-                           ISNULL(${col},     0) AS CurrentQty
-                    FROM JO_StageStatus WHERE JO_Id = @joId_v
-                `);
-            if (statusRow.recordset.length > 0) {
-                const prevQty     = statusRow.recordset[0].PrevQty    || 0;
-                const currentQty  = statusRow.recordset[0].CurrentQty || 0;
-                const combined    = currentQty + newTotal;
-                if (prevQty > 0 && combined > prevQty) {
-                    const allowed = prevQty - currentQty;
-                    return res.status(400).json({
-                        status:  0,
-                        message: `Entry total (${newTotal} pcs) exceeds available capacity. ` +
-                                 `Previous stage completed: ${prevQty} pcs, already saved this stage: ${currentQty} pcs, ` +
-                                 `maximum allowed: ${allowed > 0 ? allowed : 0} pcs.`,
-                    });
-                }
-            }
-        }
 
         const transaction = new sql.Transaction(p);
         await transaction.begin();
 
         try {
+            // Validate against previous stage's completed qty (row locked for the whole save)
+            const capErr = stageCapacityError(await readStageRow(transaction, joId), stage, newTotal);
+            if (capErr) throw new ValidationError(capErr);
+
+            if (isSizeWiseStage(stage)) {
+                const sizeErr = sizeWiseCapacityError(await readCellTotals(transaction, joId), stage, validEntries);
+                if (sizeErr) throw new ValidationError(sizeErr);
+            }
+
             for (const entry of validEntries) {
                 await transaction.request()
                     .input('joId',      sql.Int,      joId)
@@ -593,6 +804,7 @@ router.post('/saveMatrixEntries', async (req, res) => {
             throw err;
         }
     } catch (err) {
+        if (err instanceof ValidationError) return res.status(400).json({ status: 0, message: err.message });
         console.error('saveMatrixEntries error:', err);
         res.status(500).json({ status: 0, message: "An unexpected error occurred. Please try again later." });
     }
@@ -612,6 +824,9 @@ router.post('/saveStatus', async (req, res) => {
         await transaction.begin();
 
         try {
+            const downErr = downstreamError(await readStageRow(transaction, joId), 'FabricPreparation', fp);
+            if (downErr) throw new ValidationError(downErr);
+
             await transaction.request()
                 .input('joId', sql.Int,      joId)
                 .input('fp',   sql.Int,      fp)
@@ -645,6 +860,7 @@ router.post('/saveStatus', async (req, res) => {
             throw err;
         }
     } catch (err) {
+        if (err instanceof ValidationError) return res.status(400).json({ status: 0, message: err.message });
         console.error('JO saveStatus error:', err);
         res.status(500).json({ status: 0, message: "An unexpected error occurred. Please try again later." });
     }

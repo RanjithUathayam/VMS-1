@@ -160,8 +160,9 @@
         </tr>
 
         <tr *ngIf="!pagedData.length">
-          <td colspan="6" class="text-center py-6 text-gray-400">
-            No records found
+          <td colspan="7" class="text-center py-6"
+              [class.text-red-600]="errorMessage" [class.text-gray-400]="!errorMessage">
+            {{ errorMessage || (loading ? 'Loading…' : 'No records found') }}
           </td>
         </tr>
       </tbody>

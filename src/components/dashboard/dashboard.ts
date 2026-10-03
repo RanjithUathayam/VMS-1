@@ -21,6 +21,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
     totalEntries = 0;
     totalQty = 0;
+    loading = false;
+    errorMessage = '';
 
     filters = {
         fromDate: '',
@@ -113,8 +115,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
             status: this.filters.status || 'All'
         };
 
+        this.loading = true;
         this.service.getDashboard(payload).subscribe({
             next: (res: any) => {
+                this.loading = false;
+                this.errorMessage = '';
                 // ✅ SAFELY READ DATA
                 const rows = Array.isArray(res?.data)
                 ? res.data
@@ -139,7 +144,14 @@ export class DashboardComponent implements OnInit, OnDestroy {
                 this.cdr.detectChanges();
             },
             error: (err) => {
+                console.error('Dashboard load failed:', err);
+                this.loading = false;
+                this.errorMessage = err?.status === 0
+                    ? 'Cannot reach the server. Please check that the API is running.'
+                    : (err?.error?.message || 'Failed to load dashboard data.');
                 this.data = [];
+                this.filteredList = [];
+                this.totalPages = 0;
                 this.pagedData = []
                 this.totalEntries = 0;
                 this.totalQty = 0;
@@ -160,16 +172,20 @@ export class DashboardComponent implements OnInit, OnDestroy {
     applySearch() {
         const term = this.searchTerm;
 
+        // String(... ?? '') — a null DocNum/Type/PartyName must not throw and blank the whole dashboard
         const list = this.data.filter((e: any) =>
-            e.DocNum.toLowerCase().includes(term) ||
-            e.Type.toLowerCase().includes(term) ||
-            e.PartyName.toLowerCase().includes(term)
+            String(e.DocNum ?? '').toLowerCase().includes(term) ||
+            String(e.Type ?? '').toLowerCase().includes(term) ||
+            String(e.PartyName ?? '').toLowerCase().includes(term)
         );
 
         const user = this.currentUser();
-        if (!list || !user) return;
-        let filtered = []
-        if ((user.role === 'admin') || (user.role === 'watchman')) {
+        let filtered: any[] = []
+        const role = (user?.role || '').toLowerCase();
+        if (!user) {
+            filtered = [];
+        }
+        else if ((role === 'admin') || (role === 'watchman')) {
             filtered = list;
         }
         else 

@@ -17,7 +17,28 @@ export class AuthService {
         // Persist login state across reloads (for development convenience)
         const storedUser = localStorage.getItem('currentUser');
         if (storedUser) {
-            this.currentUser.set(JSON.parse(storedUser));
+            try {
+                const user: User = JSON.parse(storedUser);
+                if (this.isTokenValid(user.token)) {
+                    this.currentUser.set(user);
+                } else {
+                    // Expired, or a pre-JWT session with no token — every API call would 401.
+                    localStorage.removeItem('currentUser');
+                }
+            } catch {
+                localStorage.removeItem('currentUser');
+            }
+        }
+    }
+
+    /** True if the JWT exists and its `exp` claim is still in the future. */
+    private isTokenValid(token: string | undefined): boolean {
+        if (!token) return false;
+        try {
+            const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+            return typeof payload.exp !== 'number' || payload.exp * 1000 > Date.now();
+        } catch {
+            return false;
         }
     }
 
@@ -31,20 +52,16 @@ export class AuthService {
         return this.currentUser()?.token || null;
     }
 
-    private handleLoginError(error: unknown) {
+    /** Logs the failure and returns the server's message (e.g. "OTP has expired", rate-limit notice). */
+    private handleLoginError(error: unknown, fallback: string): string {
         if (error instanceof HttpErrorResponse) {
-             // FIX: The type guard `instanceof HttpErrorResponse` should correctly narrow the type of `error`.
-             // To resolve linter errors about accessing properties on an 'unknown' type, we explicitly cast the error
-             // and handle message extraction more robustly.
-             const httpError = error as HttpErrorResponse;
-             const serverError = httpError.error;
-             const message = (typeof serverError === 'object' && serverError && 'message' in serverError && typeof (serverError as any).message === 'string')
-                ? (serverError as any).message
-                : httpError.message;
-             console.log(`Login failed with status ${httpError.status}:`, message);
-        } else {
-             console.log('Login failed with an unexpected error:', error);
+            const serverMessage = (error.error as any)?.message;
+            console.log(`Login failed with status ${error.status}:`, serverMessage || error.message);
+            if (error.status === 0) return 'Cannot reach the server. Please check your connection.';
+            return typeof serverMessage === 'string' && serverMessage ? serverMessage : fallback;
         }
+        console.log('Login failed with an unexpected error:', error);
+        return fallback;
     }
 
     async sendOtp(mobileNumber: string): Promise<{ success: boolean; message: string }> {
@@ -52,44 +69,27 @@ export class AuthService {
            let result:any = await firstValueFrom(this.http.post<{ message: string }>(`${this.apiUrl}/auth/send-otp`, { mobileNumber }));
            return result
         } catch (error) {
-            let message = 'An unknown error occurred.';
-            if (error instanceof HttpErrorResponse) {
-                const httpError = error as HttpErrorResponse;
-                const serverError = httpError.error;
-                message = (typeof serverError === 'object' && serverError && 'message' in serverError && typeof (serverError as any).message === 'string')
-                    ? (serverError as any).message
-                    : 'Failed to send OTP due to a server error.';
-            }
-            this.handleLoginError(error);
-            return { success: false, message };
+            return { success: false, message: this.handleLoginError(error, 'Failed to send OTP due to a server error.') };
         }
     }
 
-    async loginVendor(mobileNumber: string, otp: string): Promise<boolean> {
+    async loginVendor(mobileNumber: string, otp: string): Promise<{ success: boolean; message?: string }> {
         try {
             const user = await firstValueFrom(this.http.post<User>(`${this.apiUrl}/auth/login/vendor`, { mobileNumber, otp }));
-            if (user) {
-                this.handleLoginSuccess(user);
-                return true;
-            }
-            return false;
+            this.handleLoginSuccess(user);
+            return { success: true };
         } catch (error) {
-            this.handleLoginError(error);
-            return false;
+            return { success: false, message: this.handleLoginError(error, 'Invalid OTP or vendor not found.') };
         }
     }
 
-    async loginMember(username: string, password: string): Promise<boolean> {
+    async loginMember(username: string, password: string): Promise<{ success: boolean; message?: string }> {
         try {
             const user = await firstValueFrom(this.http.post<User>(`${this.apiUrl}/auth/login/member`, { username, password }));
-            if (user) {
-                this.handleLoginSuccess(user);
-                return true;
-            }
-            return false;
+            this.handleLoginSuccess(user);
+            return { success: true };
         } catch (error) {
-            this.handleLoginError(error);
-            return false;
+            return { success: false, message: this.handleLoginError(error, 'Invalid username or password.') };
         }
     }
 
@@ -111,7 +111,7 @@ export class AuthService {
             manager:   ['dashBoard','warehouse','joStatus'],
             vendor:    ['vendor','joStatus'],
             watchman:  ['dashBoard','gate'],
-            inventory: ['vendor','partyBinMaster'],
+            inventory: ['vendor','partyBinMaster','joStatus'],
             operator:  ['vendor'],
         };
         return (map[role] || []).includes(screen);

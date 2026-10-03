@@ -34,7 +34,15 @@ export class LoginComponent {
         this.errorMessage.set(null);
         // Reset state when switching
         this.otpSent.set(false);
+        this.otp.set('');
         this.isLoading.set(false);
+    }
+
+    /** Back to the mobile-number step so the vendor can correct the number or request a fresh OTP. */
+    changeNumber() {
+        this.otpSent.set(false);
+        this.otp.set('');
+        this.errorMessage.set(null);
     }
 
     handleInput(field: 'mobile' | 'otp' | 'username' | 'password', event: Event) {
@@ -85,9 +93,9 @@ export class LoginComponent {
         this.isLoading.set(true);
         this.errorMessage.set(null);
         
-        const success = await this.authService.loginVendor(this.mobileNumber(), this.otp());
-        if (!success) {
-            this.errorMessage.set('Invalid OTP or vendor not found.');
+        const result = await this.authService.loginVendor(this.mobileNumber(), this.otp());
+        if (!result.success) {
+            this.errorMessage.set(result.message || 'Invalid OTP or vendor not found.');
         }
         // isLoading is set to false in the final block
         this.isLoading.set(false);
@@ -101,9 +109,9 @@ export class LoginComponent {
         this.isLoading.set(true);
         this.errorMessage.set(null);
         
-        const success = await this.authService.loginMember(this.username(), this.password());
-        if (!success) {
-            this.errorMessage.set('Invalid username or password.');
+        const result = await this.authService.loginMember(this.username(), this.password());
+        if (!result.success) {
+            this.errorMessage.set(result.message || 'Invalid username or password.');
         }
         this.isLoading.set(false);
     }
