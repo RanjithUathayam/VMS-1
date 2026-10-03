@@ -32,12 +32,6 @@ This directory contains the Node.js, Express, and MSSQL backend for the WMS appl
     DB_DATABASE=WarehouseDB # The name of the database you created
     DB_PORT=1433
 
-    # Secondary WMS database (used by GRN Pushing) — required, no default credentials
-    WMS2_DB_SERVER=
-    WMS2_DB_USER=
-    WMS2_DB_PASSWORD=
-    WMS2_DB_DATABASE=
-
     # Session auth — generate with: node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
     # Rotating this value invalidates all issued sessions.
     JWT_SECRET=
@@ -46,11 +40,6 @@ This directory contains the Node.js, Express, and MSSQL backend for the WMS appl
     # Interakt WhatsApp API (Basic auth token) — used for OTP delivery and notifications
     INTERAKT_API_TOKEN=
     WHATSAPP_NOTIFY_PHONE=
-
-    # ERP integration
-    ERP_API_URL=
-    ERP_CLIENT_ID=
-    ERP_CLIENT_SECRET=
 
     # Comma-separated list of frontend origins allowed to call this API (no wildcard)
     ALLOWED_ORIGINS=http://localhost:4200,http://localhost:4201

@@ -27,7 +27,7 @@ GO
 MERGE AppRoles AS target
 USING (VALUES
     ('admin',     'Administrator', 'Full system access — all screens and user management.',
-     '["dashBoard","vendor","warehouse","gate","partyBinMaster","grnPushing","joStatus","userManagement"]', 1),
+     '["dashBoard","vendor","warehouse","gate","partyBinMaster","joStatus","userManagement"]', 1),
 
     ('manager',   'Manager', 'View JO Status overview, production details, reports and warehouse approvals.',
      '["dashBoard","warehouse","joStatus"]', 1),
@@ -38,8 +38,8 @@ USING (VALUES
     ('watchman',  'Watchman', 'Access Dashboard and Gate Entry screens.',
      '["dashBoard","gate"]', 1),
 
-    ('inventory', 'Inventory', 'Access Vendor Entry, Party Bin Master and GRN Pushing screens.',
-     '["vendor","partyBinMaster","grnPushing"]', 1),
+    ('inventory', 'Inventory', 'Access Vendor Entry and Party Bin Master screens.',
+     '["vendor","partyBinMaster"]', 1),
 
     ('operator',  'Operator', 'Limited operational task access.',
      '["vendor"]', 1)

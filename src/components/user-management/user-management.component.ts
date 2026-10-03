@@ -28,7 +28,6 @@ export const ALL_SCREENS = [
     { key: 'warehouse',       label: 'Warehouse Approval' },
     { key: 'gate',            label: 'Gate Entry' },
     { key: 'partyBinMaster',  label: 'Party Bin Master' },
-    { key: 'grnPushing',      label: 'GRN Pushing' },
     { key: 'joStatus',        label: 'JO Status' },
     { key: 'userManagement',  label: 'User Management' },
 ] as const;

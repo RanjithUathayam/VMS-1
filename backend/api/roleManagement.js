@@ -11,7 +11,6 @@ const ALL_SCREENS = [
     { key: 'warehouse',       label: 'Warehouse Approval' },
     { key: 'gate',            label: 'Gate Entry' },
     { key: 'partyBinMaster',  label: 'Party Bin Master' },
-    { key: 'grnPushing',      label: 'GRN Pushing' },
     { key: 'joStatus',        label: 'JO Status' },
     { key: 'userManagement',  label: 'User Management' },
 ];
@@ -170,15 +169,15 @@ function parsePermissions(raw) {
 async function ensureDefaultRoles() {
     const defaults = [
         { roleName: 'admin',     displayName: 'Administrator', description: 'Full system access — all screens and user management.',
-          permissions: ['dashBoard','vendor','warehouse','gate','partyBinMaster','grnPushing','joStatus','userManagement'] },
+          permissions: ['dashBoard','vendor','warehouse','gate','partyBinMaster','joStatus','userManagement'] },
         { roleName: 'manager',   displayName: 'Manager',       description: 'View JO Status overview, production details and warehouse approvals.',
           permissions: ['dashBoard','warehouse','joStatus'] },
         { roleName: 'vendor',    displayName: 'Vendor',        description: 'Access vendor entry process and JO Status.',
           permissions: ['vendor','joStatus'] },
         { roleName: 'watchman',  displayName: 'Watchman',      description: 'Access Dashboard and Gate Entry.',
           permissions: ['dashBoard','gate'] },
-        { roleName: 'inventory', displayName: 'Inventory',     description: 'Access Vendor Entry, Party Bin Master and GRN Pushing.',
-          permissions: ['vendor','partyBinMaster','grnPushing'] },
+        { roleName: 'inventory', displayName: 'Inventory',     description: 'Access Vendor Entry and Party Bin Master.',
+          permissions: ['vendor','partyBinMaster'] },
         { roleName: 'operator',  displayName: 'Operator',      description: 'Limited operational task access.',
           permissions: ['vendor'] },
     ];

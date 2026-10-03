@@ -107,11 +107,11 @@ export class AuthService {
 
     private defaultPermissions(role: string, screen: string): boolean {
         const map: Record<string, string[]> = {
-            admin:     ['dashBoard','vendor','warehouse','gate','partyBinMaster','grnPushing','joStatus','userManagement'],
+            admin:     ['dashBoard','vendor','warehouse','gate','partyBinMaster','joStatus','userManagement'],
             manager:   ['dashBoard','warehouse','joStatus'],
             vendor:    ['vendor','joStatus'],
             watchman:  ['dashBoard','gate'],
-            inventory: ['vendor','partyBinMaster','grnPushing'],
+            inventory: ['vendor','partyBinMaster'],
             operator:  ['vendor'],
         };
         return (map[role] || []).includes(screen);

@@ -42,11 +42,6 @@
             Party BinMaster
           </button>
         }
-        @if(canSeeGrnPushing()) {
-          <button (click)="setView('grnPushing')" [class]="activeView() === 'grnPushing' ? 'bg-indigo-600 text-white' : 'text-gray-300 hover:bg-slate-800 hover:text-white'" class="w-full flex items-center px-4 py-2 mt-2 text-sm font-semibold rounded-lg transition-colors duration-200">
-            GRN Pushing
-          </button>
-        }
         @if(canSeeJoStatus()) {
           <button (click)="setView('joStatus')" [class]="activeView() === 'joStatus' ? 'bg-indigo-600 text-white' : 'text-gray-300 hover:bg-slate-800 hover:text-white'" class="w-full flex items-center px-4 py-2 mt-2 text-sm font-semibold rounded-lg transition-colors duration-200">
             JO Status
@@ -115,9 +110,6 @@
             }
             @case ('partyBinMaster') {
                 <party-bin-master></party-bin-master>
-            }
-            @case ('grnPushing') {
-                <grn-pushing></grn-pushing>
             }
             @case ('joStatus') {
                 <jo-status></jo-status>

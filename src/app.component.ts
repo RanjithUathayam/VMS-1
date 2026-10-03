@@ -7,14 +7,13 @@ import { LoginComponent } from './components/login/login.component';
 import { AuthService } from './services/auth.service';
 import { DashboardComponent } from './components/dashboard/dashboard';
 import { PartyBinMasterComponent } from './components/party-bin-master/party-bin-master.component';
-import { GrnPushingComponent } from './components/grn-pushing/grn-pushing.component';
 import { JoStatusComponent } from './components/jo-status/jo-status.component';
 import { JoVendorNavigationService } from './services/jo-vendor-navigation.service';
 import { UserManagementComponent } from './components/user-management/user-management.component';
 
 declare const Swal: any;
 
-type View = 'dashBoard' | 'vendor' | 'warehouse' | 'gate' | 'partyBinMaster' | 'grnPushing' | 'joStatus' | 'userManagement';
+type View = 'dashBoard' | 'vendor' | 'warehouse' | 'gate' | 'partyBinMaster' | 'joStatus' | 'userManagement';
 
 @Component({
   selector: 'app-root',
@@ -24,7 +23,7 @@ type View = 'dashBoard' | 'vendor' | 'warehouse' | 'gate' | 'partyBinMaster' | '
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     CommonModule, LoginComponent, VendorEntryComponent, WarehouseApprovalComponent,
-    GateEntryComponent, DashboardComponent, PartyBinMasterComponent, GrnPushingComponent,
+    GateEntryComponent, DashboardComponent, PartyBinMasterComponent,
     JoStatusComponent, UserManagementComponent,
   ],
 })
@@ -42,7 +41,6 @@ export class AppComponent {
   canSeeGate            = computed(() => this.authService.hasPermission('gate'));
   canSeeDashBoard       = computed(() => this.authService.hasPermission('dashBoard'));
   canSeePartyBinMaster  = computed(() => this.authService.hasPermission('partyBinMaster'));
-  canSeeGrnPushing      = computed(() => this.authService.hasPermission('grnPushing'));
   canSeeJoStatus        = computed(() => this.authService.hasPermission('joStatus'));
   canSeeUserManagement  = computed(() => this.authService.hasPermission('userManagement'));
 
@@ -60,7 +58,7 @@ export class AppComponent {
       if (!user) return;
       const priority: View[] = [
         'vendor', 'dashBoard', 'joStatus', 'warehouse',
-        'gate', 'partyBinMaster', 'grnPushing', 'userManagement',
+        'gate', 'partyBinMaster', 'userManagement',
       ];
       const first = priority.find(v => this.authService.hasPermission(v));
       if (first) this.setView(first);

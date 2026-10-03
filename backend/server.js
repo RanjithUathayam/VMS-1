@@ -6,12 +6,10 @@ const rateLimit = require('express-rate-limit');
 const materialEntriesRouter = require('./api/material-entries');
 const authRouter = require('./api/auth');
 const partyBin = require('./api/partyBinMaster');
-const grnPushing = require('./api/grnPushing');
 const joStatus       = require('./api/joStatus');
 const userManagement  = require('./api/userManagement');
 const roleManagement  = require('./api/roleManagement');
 const db = require('./db');
-const { getWmsPool } = require('./db-wms');
 
 const app = express();
 const port = process.env.API_PORT || 3001;
@@ -47,7 +45,6 @@ app.use('/api', rateLimit({
 app.use('/api/auth', authRouter);
 app.use('/api/material-transactions', materialEntriesRouter);
 app.use('/api/partyBin', partyBin);
-app.use('/api/ERP',      grnPushing);
 app.use('/api/joStatus',      joStatus);
 app.use('/api/users',         userManagement);
 app.use('/api/roles',         roleManagement);
@@ -62,7 +59,7 @@ app.use((err, req, res, _next) => {
     res.status(500).json({ status: 0, message: 'An unexpected error occurred.' });
 });
 
-// Start the server and then attempt to connect to both databases.
+// Start the server and then attempt to connect to the database.
 app.listen(port, () => {
     console.log(`Server running on port ${port}`);
 
@@ -79,12 +76,5 @@ app.listen(port, () => {
         console.log('!!! connection is restored. Check .env      !!!');
         console.log(`!!! Error: ${err.message}`);
         console.log('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!');
-    });
-
-    // Secondary DB (WMS @ 10.0.10.203) — used by GRN Pushing endpoints
-    getWmsPool().catch(err => {
-        console.log('!!! WARNING: WMS2 DB connection failed (10.0.10.203/WMS) !!!');
-        console.log(`!!! Error: ${err.message}`);
-        console.log('!!! GRN Pushing endpoints will not work until resolved  !!!');
     });
 });

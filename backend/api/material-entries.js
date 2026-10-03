@@ -322,37 +322,6 @@ router.put('/gate-inward/:EntryId', authorize('gate'), async (req, res) => {
     }
 });
 
-/* ============================================================
-   7. PUT – SAP UPDATE
-   ============================================================ */
-router.put('/:docNum/sap-update', authorize('grnPushing'), async (req, res) => {
-    const { docNum } = req.params;
-    const { SAPDocType, SAPDocEntry, SAPDocNum, SAPStatus } = req.body;
-
-    try {
-        await pool.request()
-            .input("DocNum", sql.NVarChar, docNum)
-            .input("SAPDocType", sql.NVarChar, SAPDocType)
-            .input("SAPDocEntry", sql.Int, SAPDocEntry)
-            .input("SAPDocNum", sql.NVarChar, SAPDocNum)
-            .input("SAPStatus", sql.NVarChar, SAPStatus)
-            .query(`
-                UPDATE MaterialTransactions
-                SET
-                    SAPDocType=@SAPDocType,
-                    SAPDocEntry=@SAPDocEntry,
-                    SAPDocNum=@SAPDocNum,
-                    SAPStatus=@SAPStatus
-                WHERE DocNum=@DocNum;
-            `);
-
-        res.json({ status: true });
-
-    } catch (err) {
-        sendServerError(res, err, 'material-entries:sap-update', 'Failed to update SAP status.');
-    }
-});
-
 router.get('/warehouses', async (req, res) => {
   try {
     const result = await pool.request().query(`
