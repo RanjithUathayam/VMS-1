@@ -97,6 +97,8 @@ export class AuthService {
     hasPermission(screen: string): boolean {
         const user = this.currentUser();
         if (!user) return false;
+        // Mirrors the backend `authorize` middleware: admin always has access.
+        if (user.role === 'admin') return true;
         const perms = user.permissions;
         if (Array.isArray(perms) && perms.length > 0) {
             return perms.includes(screen);
@@ -107,7 +109,7 @@ export class AuthService {
 
     private defaultPermissions(role: string, screen: string): boolean {
         const map: Record<string, string[]> = {
-            admin:     ['dashBoard','vendor','warehouse','gate','partyBinMaster','joStatus','userManagement'],
+            admin:     ['dashBoard','vendor','warehouse','gate','partyBinMaster','joStatus','userManagement','qcInspection','qcReport','qcApprove'],
             manager:   ['dashBoard','warehouse','joStatus'],
             vendor:    ['vendor','joStatus'],
             watchman:  ['dashBoard','gate'],

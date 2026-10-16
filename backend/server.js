@@ -9,6 +9,7 @@ const partyBin = require('./api/partyBinMaster');
 const joStatus       = require('./api/joStatus');
 const userManagement  = require('./api/userManagement');
 const roleManagement  = require('./api/roleManagement');
+const qcInspection    = require('./api/qcInspection');
 const db = require('./db');
 
 const app = express();
@@ -55,6 +56,7 @@ app.use('/api/partyBin', partyBin);
 app.use('/api/joStatus',      joStatus);
 app.use('/api/users',         userManagement);
 app.use('/api/roles',         roleManagement);
+app.use('/api/qc',            qcInspection);
 
 app.use((req, res) => {
     res.status(404).json({ status: 0, message: 'Not found.' });

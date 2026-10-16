@@ -144,18 +144,7 @@ export class VendorEntryComponent {
 
             if (!list || !user) return;
 
-            let filtered;
-            if (user.role === 'admin') {
-                filtered = list;
-            }
-            else if (user.name == 'BandR')
-            {
-                filtered = list.filter(e => e.PartyCode === 'V05521')
-            }
-            else
-            {
-                filtered = list.filter(e => e.PartyCode === user.partyCode);
-            }
+            const filtered = this.scopeEntriesForUser(list, user);
 
             if (this.filteredList().length == 0 && filtered.length > 0) {
                 this.filteredList.set(filtered);
@@ -815,17 +804,19 @@ export class VendorEntryComponent {
 
         const user = this.currentUser();
         if (!list || !user) return;
-        let filtered;
-        if ((user.role === 'admin') || (user.role === 'inventory')) {
-            filtered = list;
-        } else if (user.name === 'BandR') {
-            filtered = list.filter(e => e.PartyCode === 'V05521');
-        } else {
-            filtered = list.filter(e => e.PartyCode === user.partyCode);
-        }
+        const filtered = this.scopeEntriesForUser(list, user);
 
         this.filteredList.set(filtered);
         this.updatePagination();
+    }
+
+    // Vendor logins only see their own party's entries; every other role with
+    // access to this screen (admin, manager, inventory, custom roles) sees all.
+    private scopeEntriesForUser(list: any[], user: any): any[] {
+        if (user.role === 'admin') return list;
+        if (user.name === 'BandR') return list.filter(e => e.PartyCode === 'V05521');
+        if (user.role === 'vendor') return list.filter(e => e.PartyCode === user.partyCode);
+        return list;
     }
 
     // Convert any date string to YYYY-MM-DD

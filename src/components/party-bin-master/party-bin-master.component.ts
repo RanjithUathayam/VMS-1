@@ -30,6 +30,8 @@ export class PartyBinMasterComponent {
     partySearch = '';
     filteredPartyList: any[] = [];
     openPartyDropdown = false;
+    readonly maxPartyResults = 50;
+    private partySearchTimer: any;
 
     private api = inject(binMasterService);
 
@@ -57,18 +59,24 @@ export class PartyBinMasterComponent {
     }
 
     loadParty(){
-        try 
+        // Party list is large and rarely changes; fetch it once per page visit
+        if (this.partyList.length > 0) {
+            this.filterParties();
+            return;
+        }
+        try
         {
             this.isPartyLoading.set(true) 
             this.api.getPartyList().subscribe(res => {
-                if (res.status) 
+                if (res.status)
                 {
                     this.partyList = res.data.map((w: any) => ({
                         CardCode: w.CardCode,
                         CardFName: w.CardFName,
-                        CardName: w.CardName
+                        CardName: w.CardName,
+                        searchKey: `${w.CardCode ?? ''} ${w.CardName ?? ''}`.toLowerCase()
                     }));
-                    this.filteredPartyList = res.data
+                    this.filterParties();
                     this.isPartyLoading.set(false)
                 }
                 else
@@ -170,12 +178,24 @@ export class PartyBinMasterComponent {
 
     onPartySearch(value: string) {
         this.partySearch = value;
+        this.openPartyDropdown = true;
 
-        const search = value.toLowerCase();
+        clearTimeout(this.partySearchTimer);
+        this.partySearchTimer = setTimeout(() => this.filterParties(), 200);
+    }
 
-        this.filteredPartyList = this.partyList.filter(p =>
-            p.CardName.toLowerCase().includes(search)
-        );        
+    private filterParties() {
+        const search = this.partySearch.trim().toLowerCase();
+        const result: any[] = [];
+
+        // Stop at the display limit instead of filtering and rendering the whole list
+        for (const p of this.partyList) {
+            if (!search || p.searchKey.includes(search)) {
+                result.push(p);
+                if (result.length >= this.maxPartyResults) break;
+            }
+        }
+        this.filteredPartyList = result;
     }
 
     selectPartyName(data: any) {

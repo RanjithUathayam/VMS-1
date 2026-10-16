@@ -1,0 +1,132 @@
+<div class="qc-wrap">
+  <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+    <div>
+      <h2 class="text-xl font-bold text-slate-800">QC Report</h2>
+      <p class="text-sm text-slate-500">Final inspection history — filter, review, print and export</p>
+    </div>
+    <button class="btn-secondary" [disabled]="exporting() || loading()" (click)="exportCsv()">
+      {{ exporting() ? 'Exporting…' : 'Export to Excel (CSV)' }}
+    </button>
+  </div>
+
+  <!-- Filters -->
+  @if (filter(); as f) {
+    <section class="card p-4 mb-4">
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
+        <label class="fld"><span>From date</span>
+          <input class="inp" type="date" [value]="f.fromDate" (change)="setFilter('fromDate', $any($event.target).value)" /></label>
+        <label class="fld"><span>To date</span>
+          <input class="inp" type="date" [value]="f.toDate" (change)="setFilter('toDate', $any($event.target).value)" /></label>
+        <label class="fld"><span>Supplier</span>
+          <input class="inp" [value]="f.supplier" (input)="setFilter('supplier', $any($event.target).value)" (keyup.enter)="apply()" /></label>
+        <label class="fld"><span>Brand</span>
+          <input class="inp" [value]="f.brand" (input)="setFilter('brand', $any($event.target).value)" (keyup.enter)="apply()" /></label>
+        <label class="fld"><span>Style</span>
+          <input class="inp" [value]="f.style" (input)="setFilter('style', $any($event.target).value)" (keyup.enter)="apply()" /></label>
+        <label class="fld"><span>DC No / Lot</span>
+          <input class="inp" [value]="f.dcNo" (input)="setFilter('dcNo', $any($event.target).value)" (keyup.enter)="apply()" /></label>
+
+        <label class="fld"><span>JO / PO / ST No</span>
+          <input class="inp" [value]="f.docNum" (input)="setFilter('docNum', $any($event.target).value)" (keyup.enter)="apply()" /></label>
+        <label class="fld"><span>Inspector</span>
+          <input class="inp" [value]="f.inspector" (input)="setFilter('inspector', $any($event.target).value)" (keyup.enter)="apply()" /></label>
+        <label class="fld"><span>Inspection type</span>
+          <select class="inp" (change)="setFilter('inspectionType', $any($event.target).value)">
+            <option value="" [selected]="!f.inspectionType">All</option>
+            @for (t of inspectionTypes; track t) { <option [value]="t" [selected]="f.inspectionType === t">{{ t }}</option> }
+          </select></label>
+        <label class="fld"><span>QC result</span>
+          <select class="inp" (change)="setFilter('finalResult', $any($event.target).value)">
+            <option value="" [selected]="!f.finalResult">All</option>
+            @for (r of ['PASS', 'FAIL', 'DEROGATION']; track r) { <option [value]="r" [selected]="f.finalResult === r">{{ r }}</option> }
+          </select></label>
+        <label class="fld"><span>Approval status</span>
+          <select class="inp" (change)="setFilter('status', $any($event.target).value)">
+            <option value="" [selected]="!f.status">All</option>
+            @for (s of ['DRAFT', 'SUBMITTED', 'APPROVED', 'REJECTED']; track s) { <option [value]="s" [selected]="f.status === s">{{ s }}</option> }
+          </select></label>
+        <label class="fld"><span>Search</span>
+          <input class="inp" placeholder="Report no, colour…" [value]="f.search" (input)="setFilter('search', $any($event.target).value)" (keyup.enter)="apply()" /></label>
+      </div>
+      <div class="flex justify-end gap-2 mt-3">
+        <button class="btn-secondary" (click)="reset()">Reset</button>
+        <button class="btn-primary" [disabled]="loading()" (click)="apply()">{{ loading() ? 'Loading…' : 'Apply filters' }}</button>
+      </div>
+    </section>
+  }
+
+  @if (error()) {
+    <div class="mb-4 p-4 rounded-lg bg-rose-50 text-rose-800 text-sm">{{ error() }}</div>
+  }
+
+  <!-- Summary -->
+  @if (summary(); as s) {
+    <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 mb-4">
+      <button class="kpi text-left" (click)="quickFilter('status', '')"><span>Reports</span><b>{{ s.total }}</b></button>
+      <button class="kpi text-left" (click)="quickFilter('finalResult', 'PASS')"><span>Pass</span><b class="!text-emerald-700">{{ s.pass }}</b><em class="!text-slate-500">{{ rates().pass }}%</em></button>
+      <button class="kpi text-left" (click)="quickFilter('finalResult', 'FAIL')"><span>Fail</span><b class="!text-rose-700">{{ s.fail }}</b><em class="!text-slate-500">{{ rates().fail }}%</em></button>
+      <button class="kpi text-left" (click)="quickFilter('finalResult', 'DEROGATION')"><span>Derogation</span><b class="!text-lime-700">{{ s.derogation }}</b><em class="!text-slate-500">{{ rates().derogation }}%</em></button>
+      <button class="kpi text-left" (click)="quickFilter('status', 'SUBMITTED')"><span>Pending approval</span><b class="!text-sky-700">{{ s.submitted }}</b></button>
+      <button class="kpi text-left" (click)="quickFilter('status', 'DRAFT')"><span>Drafts</span><b>{{ s.draft }}</b></button>
+      <div class="kpi"><span>Pieces inspected</span><b>{{ s.inspectedQty | number }}</b></div>
+      <div class="kpi"><span>Major / Minor</span><b>{{ s.totalMajor }} / {{ s.totalMinor }}</b></div>
+    </div>
+  }
+
+  <!-- Results -->
+  <section class="card">
+    <div class="overflow-x-auto">
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th>Report No</th><th>Date</th><th>Type</th><th>Supplier</th><th>Brand</th><th>Style</th><th>Colour</th><th>DC No</th>
+            <th class="text-center">Lot / Ins.</th><th class="text-center">Code · n</th>
+            <th class="text-center">Major<br><span class="font-normal normal-case">found / Ac</span></th>
+            <th class="text-center">Minor<br><span class="font-normal normal-case">found / Ac</span></th>
+            <th>Meas.</th><th>Pack.</th><th>Result</th><th>Inspector</th><th>Status</th><th></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (r of rows(); track r.id) {
+            <tr class="cursor-pointer" (click)="openViewer(r.id)">
+              <td class="font-semibold text-indigo-700 whitespace-nowrap">{{ r.reportNo }}</td>
+              <td class="whitespace-nowrap">{{ fmtDate(r.inspectionDate) }}</td>
+              <td>{{ r.inspectionType }}</td>
+              <td>{{ r.supplierName }}</td>
+              <td>{{ r.brandName }}</td>
+              <td>{{ r.styleName }}</td>
+              <td class="max-w-[160px] truncate" [title]="r.colours">{{ r.colours }}</td>
+              <td>{{ r.dcNo }}</td>
+              <td class="text-center whitespace-nowrap">{{ r.lotQty }} / {{ r.inspectedQty }}</td>
+              <td class="text-center whitespace-nowrap">{{ r.codeLetter || '–' }} · {{ r.sampleSize ?? '–' }}</td>
+              <td class="text-center" [class.text-rose-600]="r.majorResult === 'FAIL'" [class.font-bold]="r.majorResult === 'FAIL'">{{ r.totalMajor }} / {{ r.majorAc ?? '–' }}</td>
+              <td class="text-center" [class.text-rose-600]="r.minorResult === 'FAIL'" [class.font-bold]="r.minorResult === 'FAIL'">{{ r.totalMinor }} / {{ r.minorAc ?? '–' }}</td>
+              <td><span class="badge" [ngClass]="resultClass(r.measurementResult)">{{ r.measurementResult || '—' }}</span></td>
+              <td><span class="badge" [ngClass]="resultClass(r.packingResult)">{{ r.packingResult || '—' }}</span></td>
+              <td><span class="badge" [ngClass]="resultClass(r.finalResult)">{{ r.finalResult || '—' }}</span></td>
+              <td>{{ r.inspectorName }}</td>
+              <td><span class="badge" [ngClass]="statusClass(r.status)">{{ r.status }}</span></td>
+              <td><button class="link" (click)="openViewer(r.id); $event.stopPropagation()">View</button></td>
+            </tr>
+          } @empty {
+            <tr><td colspan="18" class="text-center text-slate-500 py-10">{{ loading() ? 'Loading…' : 'No QC reports match these filters.' }}</td></tr>
+          }
+        </tbody>
+      </table>
+    </div>
+    @if (total() > pageSize) {
+      <div class="flex items-center justify-between p-3 border-t border-slate-200 text-sm text-slate-600">
+        <span>{{ total() }} reports</span>
+        <div class="flex items-center gap-2">
+          <button class="btn-secondary" [disabled]="page() <= 1 || loading()" (click)="load(page() - 1)">Prev</button>
+          <span>Page {{ page() }} / {{ totalPages() }}</span>
+          <button class="btn-secondary" [disabled]="page() >= totalPages() || loading()" (click)="load(page() + 1)">Next</button>
+        </div>
+      </div>
+    }
+  </section>
+
+  @if (viewerId(); as id) {
+    <qc-report-viewer [inspectionId]="id" (closed)="closeViewer()" (edit)="onEditRequested($event)" (changed)="load(page())"></qc-report-viewer>
+  }
+</div>

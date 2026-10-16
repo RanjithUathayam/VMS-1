@@ -1,0 +1,451 @@
+<div class="qc-wrap">
+
+  <!-- ═══════════════ PAGE HEADER ═══════════════ -->
+  <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+    <div>
+      <h2 class="text-xl font-bold text-slate-800">QC Inspection</h2>
+      <p class="text-sm text-slate-500">Final Inspection Report — measurement & packing audit, defect checklist, AQL result</p>
+    </div>
+    <div class="flex gap-2">
+      @if (view() === 'form') {
+        <button class="btn-secondary" (click)="backToList()">&larr; Back to list</button>
+      } @else {
+        <button class="btn-secondary" (click)="loadList()" [disabled]="listLoading()">Refresh</button>
+        @if (meta()?.permissions?.canEdit) {
+          <button class="btn-primary" (click)="newInspection()">+ New Inspection</button>
+        }
+      }
+    </div>
+  </div>
+
+  @if (loadError()) {
+    <div class="p-4 rounded-lg bg-rose-50 text-rose-800 text-sm">{{ loadError() }}</div>
+  }
+
+  <!-- ═══════════════ LIST ═══════════════ -->
+  @if (view() === 'list' && !loadError()) {
+    <div class="card">
+      <div class="flex flex-wrap gap-2 p-3 border-b border-slate-200">
+        <input class="inp flex-1 min-w-[220px]" placeholder="Search report no, style, DC no, supplier, brand, colour…"
+               [value]="search()" (keyup.enter)="onSearch($any($event.target).value)" (change)="onSearch($any($event.target).value)" />
+        <select class="inp w-44" [value]="statusFilter()" (change)="onStatusFilter($any($event.target).value)">
+          <option value="">All statuses</option>
+          <option value="DRAFT">Draft</option>
+          <option value="SUBMITTED">Submitted</option>
+          <option value="APPROVED">Approved</option>
+          <option value="REJECTED">Rejected</option>
+        </select>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="tbl">
+          <thead>
+            <tr>
+              <th>Report No</th><th>Date</th><th>Style</th><th>DC No</th><th>Supplier</th><th>Type</th>
+              <th class="text-center">Ins. Qty</th><th class="text-center">Major</th><th class="text-center">Minor</th>
+              <th>Result</th><th>Status</th><th class="text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (r of rows(); track r.id) {
+              <tr>
+                <td class="font-semibold text-indigo-700 whitespace-nowrap">{{ r.reportNo }}</td>
+                <td class="whitespace-nowrap">{{ fmtDate(r.inspectionDate) }}</td>
+                <td>{{ r.styleName }}</td>
+                <td>{{ r.dcNo }}</td>
+                <td>{{ r.supplierName }}</td>
+                <td>{{ r.inspectionType }}</td>
+                <td class="text-center">{{ r.inspectedQty }}</td>
+                <td class="text-center" [class.text-rose-600]="r.majorResult === 'FAIL'">{{ r.totalMajor }}<span class="text-slate-400">/{{ r.majorAc ?? '–' }}</span></td>
+                <td class="text-center" [class.text-rose-600]="r.minorResult === 'FAIL'">{{ r.totalMinor }}<span class="text-slate-400">/{{ r.minorAc ?? '–' }}</span></td>
+                <td><span class="badge" [ngClass]="resultClass(r.finalResult)">{{ r.finalResult || '—' }}</span></td>
+                <td><span class="badge" [ngClass]="statusClass(r.status)">{{ r.status }}</span></td>
+                <td class="text-right whitespace-nowrap">
+                  <button class="link" (click)="openViewer(r.id)">View</button>
+                  @if (isEditable(r)) {
+                    <button class="link" (click)="editInspection(r.id)">Edit</button>
+                  }
+                  @if (r.status === 'DRAFT' && meta()?.permissions?.canEdit) {
+                    <button class="link text-rose-600" (click)="deleteDraft(r)">Delete</button>
+                  }
+                </td>
+              </tr>
+            } @empty {
+              <tr><td colspan="12" class="text-center text-slate-500 py-10">
+                {{ listLoading() ? 'Loading…' : 'No inspections found.' }}
+              </td></tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      @if (total() > pageSize) {
+        <div class="flex items-center justify-between p-3 border-t border-slate-200 text-sm text-slate-600">
+          <span>{{ total() }} reports</span>
+          <div class="flex items-center gap-2">
+            <button class="btn-secondary" [disabled]="page() <= 1 || listLoading()" (click)="loadList(page() - 1)">Prev</button>
+            <span>Page {{ page() }} / {{ totalPages() }}</span>
+            <button class="btn-secondary" [disabled]="page() >= totalPages() || listLoading()" (click)="loadList(page() + 1)">Next</button>
+          </div>
+        </div>
+      }
+    </div>
+  }
+
+  <!-- ═══════════════ FORM ═══════════════ -->
+  @if (view() === 'form') {
+    @if (form(); as f) { @if (evaluation(); as ev) {
+
+    @if (record(); as rec) {
+      <div class="flex flex-wrap items-center gap-2 mb-3 text-sm">
+        <span class="font-bold text-slate-800">{{ rec.reportNo }}</span>
+        <span class="badge" [ngClass]="statusClass(rec.status)">{{ rec.status }}</span>
+        @if (dirty() && !readOnly()) { <span class="text-amber-600 text-xs">Unsaved changes</span> }
+      </div>
+      @if (rec.status === 'REJECTED') {
+        <div class="mb-4 p-3 rounded-lg bg-rose-50 border border-rose-200 text-sm text-rose-800">
+          <b>Rejected{{ rec.approvedBy ? ' by ' + rec.approvedBy : '' }}:</b> {{ rec.approvalRemarks }} — correct the report and submit again.
+        </div>
+      }
+      @if (readOnly()) {
+        <div class="mb-4 p-3 rounded-lg bg-sky-50 border border-sky-200 text-sm text-sky-800">
+          This report is {{ rec.status }} and is read-only.
+        </div>
+      }
+    }
+
+    @if (errors().length) {
+      <div id="qc-errors" class="mb-4 p-3 rounded-lg bg-rose-50 border border-rose-200 text-sm text-rose-800">
+        <b>Please fix the following:</b>
+        <ul class="list-disc ml-5 mt-1">
+          @for (e of errors(); track $index) { <li>{{ e }}</li> }
+        </ul>
+      </div>
+    }
+
+    <fieldset [disabled]="readOnly()" class="space-y-4">
+
+      <!-- 1. Order / lot details -->
+      <section class="card p-4">
+        <h3 class="sec">1. Order & Lot Details</h3>
+        <!-- Source document: EXEC [@ASRS_Transaction] @type = 'Binning' -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+          <div class="fld"><span>Doc Type</span>
+            <div class="seg">
+              @for (t of docTypes; track t) {
+                <button type="button" [class.on]="f.docType === t" (click)="selectDocType(t)">{{ t }}</button>
+              }
+            </div>
+          </div>
+          <label class="fld"><span>Supplier (Party Code) <em>{{ partiesLoading() ? 'loading…' : '' }}</em></span>
+            <input class="inp" list="qc-party-list" placeholder="Type code or name…" [readonly]="isVendor()"
+                   [value]="f.supplierCode ? f.supplierCode + (f.supplierName ? ' — ' + f.supplierName : '') : ''"
+                   (change)="selectParty($any($event.target).value)" />
+            <datalist id="qc-party-list">
+              @for (p of parties(); track p.code) { <option [value]="p.code + ' — ' + p.name"></option> }
+            </datalist>
+          </label>
+          <label class="fld lg:col-span-2"><span>Doc No <em>(prefills supplier, colours, sizes and qty)</em></span>
+            <select class="inp" [disabled]="!f.supplierCode || docsLoading()" (change)="selectDocument($any($event.target).value)">
+              <option value="" [selected]="!f.docNum">
+                {{ docsLoading() ? 'Loading documents…' : !f.supplierCode ? 'Select a supplier first' : '— Select ' + f.docType + ' —' }}
+              </option>
+              @if (f.docNum && !selectedDoc()) {
+                <option [value]="f.docNum" selected>{{ f.docType }} {{ f.docNum }} (saved)</option>
+              }
+              @for (d of documents(); track d.docNum) {
+                <option [value]="d.docNum" [selected]="d.docNum === f.docNum">{{ f.docType }} {{ d.docNum }} · {{ d.totalQty }} pcs · {{ d.colours.length }} colour(s)</option>
+              }
+            </select>
+            @if (docsError()) { <em class="text-xs text-amber-700 mt-1">{{ docsError() }}</em> }
+          </label>
+        </div>
+        @if (selectedDoc(); as d) {
+          <div class="doc-strip mb-3">
+            <span><b>{{ f.docType }} {{ d.docNum }}</b></span>
+            @if (d.docDate) { <span>Date <b>{{ fmtDate(d.docDate) }}</b></span> }
+            <span>Party <b>{{ d.partyName }}</b></span>
+            <span>Lines <b>{{ d.lineCount }}</b></span>
+            <span>Qty <b>{{ d.totalQty }}</b></span>
+            <span>Pending <b>{{ d.pendingQty }}</b></span>
+            @if (d.groups.length) { <span>Group <b>{{ d.groups.join(', ') }}</b></span> }
+            @if (d.sleeves.length) { <span>Sleeve <b>{{ d.sleeves.join(', ') }}</b></span> }
+          </div>
+        }
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <label class="fld"><span>Inspection Date *</span>
+            <input class="inp" type="date" [value]="f.inspectionDate" (change)="setText('inspectionDate', $any($event.target).value)" />
+          </label>
+          <div class="fld"><span>Inspection Type *</span>
+            <div class="seg">
+              @for (t of inspectionTypes; track t) {
+                <button type="button" [class.on]="f.inspectionType === t" (click)="setText('inspectionType', t)">{{ t }}</button>
+              }
+            </div>
+          </div>
+
+          <label class="fld"><span>Supplier Name *</span>
+            <input class="inp" maxlength="200" [value]="f.supplierName" (input)="setText('supplierName', $any($event.target).value)" />
+          </label>
+          <label class="fld"><span>Brand Name *</span>
+            <input class="inp" maxlength="100" [value]="f.brandName" (input)="setText('brandName', $any($event.target).value)" />
+          </label>
+          <label class="fld"><span>Style Name *</span>
+            <input class="inp" maxlength="200" [value]="f.styleName" (input)="setText('styleName', $any($event.target).value)" />
+          </label>
+          <label class="fld"><span>DC No *</span>
+            <input class="inp" maxlength="100" [value]="f.dcNo" (input)="setText('dcNo', $any($event.target).value)" />
+          </label>
+
+          <label class="fld lg:col-span-2"><span>Colour(s) * <em>comma-separated</em></span>
+            <input class="inp" maxlength="500" placeholder="e.g. TR3218901, TR3618902" [value]="f.colours" (input)="setText('colours', $any($event.target).value)" />
+          </label>
+          <label class="fld lg:col-span-2"><span>Sizes * <em>comma-separated — {{ sizeCount() }} size(s)</em></span>
+            <input class="inp" maxlength="300" placeholder="e.g. 28,30,32,34,36,38,40" [value]="f.sizes" (input)="setText('sizes', $any($event.target).value)" />
+          </label>
+
+          <label class="fld"><span>Order Qty *</span>
+            <input class="inp" type="number" min="1" step="1" [value]="f.orderQty ?? ''" (input)="setNum('orderQty', $any($event.target).value)" />
+          </label>
+          <label class="fld"><span>Lot Qty * <em>(AQL lot size)</em></span>
+            <input class="inp" type="number" min="1" step="1" [value]="f.lotQty ?? ''" (input)="setNum('lotQty', $any($event.target).value)" />
+          </label>
+          <label class="fld"><span>Inspected Qty *</span>
+            <input class="inp" type="number" min="1" step="1" [value]="f.inspectedQty ?? ''" (input)="setNum('inspectedQty', $any($event.target).value)"
+                   [class.inp-warn]="ev.requiredSample && f.inspectedQty && f.inspectedQty < ev.requiredSample" />
+          </label>
+          <div class="fld"><span>Measurement Unit *</span>
+            <div class="seg">
+              @for (u of units; track u) {
+                <button type="button" [class.on]="f.measurementUnit === u" (click)="setText('measurementUnit', u)">{{ u }}</button>
+              }
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. AQL -->
+      <section class="card p-4">
+        <h3 class="sec">2. AQL Sampling Plan <em class="font-normal text-slate-500">(ISO 2859-1 / ANSI Z1.4 single sampling, normal inspection)</em></h3>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+          <label class="fld"><span>Inspection Level</span>
+            <select class="inp" (change)="setText('inspectionLevel', $any($event.target).value)">
+              @for (l of levels; track l) { <option [value]="l" [selected]="l === f.inspectionLevel">{{ l.startsWith('S') ? 'Special ' + l : 'General ' + l }}</option> }
+            </select>
+          </label>
+          <label class="fld"><span>Major AQL</span>
+            <select class="inp" (change)="setNum('aqlMajor', $any($event.target).value)">
+              @for (a of aqlValues; track a) { <option [value]="a" [selected]="a === f.aqlMajor">{{ a }}</option> }
+            </select>
+          </label>
+          <label class="fld"><span>Minor AQL</span>
+            <select class="inp" (change)="setNum('aqlMinor', $any($event.target).value)">
+              @for (a of aqlValues; track a) { <option [value]="a" [selected]="a === f.aqlMinor">{{ a }}</option> }
+            </select>
+          </label>
+        </div>
+        @if (ev.majorPlan && ev.minorPlan) {
+          <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div class="kpi"><span>Code Letter</span><b>{{ ev.majorPlan.codeLetter }}</b></div>
+            <div class="kpi"><span>Sample Size</span><b>{{ ev.requiredSample }}</b>
+              @if (ev.majorPlan.fullInspection || ev.minorPlan.fullInspection) { <em>100% inspection</em> }</div>
+            <div class="kpi"><span>Major — Accept / Reject</span><b>{{ ev.majorPlan.ac }} / {{ ev.majorPlan.re }}</b>
+              @if (ev.majorPlan.planLetter !== ev.majorPlan.codeLetter) { <em>plan {{ ev.majorPlan.planLetter }} (arrow)</em> }</div>
+            <div class="kpi"><span>Minor — Accept / Reject</span><b>{{ ev.minorPlan.ac }} / {{ ev.minorPlan.re }}</b>
+              @if (ev.minorPlan.planLetter !== ev.minorPlan.codeLetter) { <em>plan {{ ev.minorPlan.planLetter }} (arrow)</em> }</div>
+          </div>
+        } @else {
+          <p class="text-sm text-slate-500">Enter the Lot Qty to calculate the sampling plan.</p>
+        }
+        @for (w of ev.warnings; track $index) {
+          <p class="mt-2 text-sm text-amber-700 font-medium">&#9888; {{ w }}</p>
+        }
+      </section>
+
+      <!-- 3. Audits -->
+      <section class="card p-4">
+        <h3 class="sec">3. Measurement & Packing Audit</h3>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div>
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-sm font-semibold text-slate-700">Measurement Audit *</span>
+              <div class="seg">
+                <button type="button" class="pass" [class.on]="f.measurementResult === 'PASS'" (click)="setText('measurementResult', 'PASS')">PASS</button>
+                <button type="button" class="fail" [class.on]="f.measurementResult === 'FAIL'" (click)="setText('measurementResult', 'FAIL')">FAIL</button>
+              </div>
+            </div>
+            <textarea class="inp" rows="2" maxlength="1000" placeholder="Comments{{ f.measurementResult === 'FAIL' ? ' (required)' : '' }} — e.g. Measurements are found within tolerance"
+                      [value]="f.measurementComments" (input)="setText('measurementComments', $any($event.target).value)"></textarea>
+          </div>
+          <div>
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-sm font-semibold text-slate-700">Packing Audit *</span>
+              <div class="seg">
+                <button type="button" class="pass" [class.on]="f.packingResult === 'PASS'" (click)="setText('packingResult', 'PASS')">PASS</button>
+                <button type="button" class="fail" [class.on]="f.packingResult === 'FAIL'" (click)="setText('packingResult', 'FAIL')">FAIL</button>
+              </div>
+            </div>
+            <textarea class="inp" rows="2" maxlength="1000" placeholder="Comments{{ f.packingResult === 'FAIL' ? ' (required)' : '' }}"
+                      [value]="f.packingComments" (input)="setText('packingComments', $any($event.target).value)"></textarea>
+          </div>
+        </div>
+      </section>
+
+      <!-- 4. Defects -->
+      <section class="card p-4">
+        <h3 class="sec">4. Defect Checklist <em class="font-normal text-slate-500">(count of defects found in the sample)</em></h3>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          @for (cat of categories; track cat.key) {
+            <div class="border border-slate-200 rounded-lg overflow-hidden">
+              <table class="tbl dtbl">
+                <thead><tr><th>{{ cat.label }}</th><th class="w-20 text-center">Major</th><th class="w-20 text-center">Minor</th><th class="w-8"></th></tr></thead>
+                <tbody>
+                  @for (item of defectsBy()[cat.key]; track item.index) {
+                    <tr [class.hit]="(item.line.majorQty || 0) + (item.line.minorQty || 0) > 0">
+                      <td>
+                        @if (item.line.isCustom) {
+                          <input class="inp inp-sm" maxlength="100" placeholder="Other defect…" [value]="item.line.defectName"
+                                 (input)="setDefect(item.index, 'defectName', $any($event.target).value)" />
+                        } @else { {{ item.line.defectName }} }
+                      </td>
+                      <td><input class="inp inp-sm text-center" type="number" min="0" step="1" [value]="item.line.majorQty ?? ''"
+                                 (input)="setDefect(item.index, 'majorQty', $any($event.target).value)" /></td>
+                      <td><input class="inp inp-sm text-center" type="number" min="0" step="1" [value]="item.line.minorQty ?? ''"
+                                 (input)="setDefect(item.index, 'minorQty', $any($event.target).value)" /></td>
+                      <td>@if (item.line.isCustom && !readOnly()) {
+                        <button type="button" class="text-slate-400 hover:text-rose-600" (click)="removeDefect(item.index)" aria-label="Remove">&#x2715;</button>
+                      }</td>
+                    </tr>
+                  }
+                </tbody>
+                <tfoot>
+                  <tr><th>TOTAL</th><th class="text-center">{{ ev.totals[cat.key].major }}</th><th class="text-center">{{ ev.totals[cat.key].minor }}</th><th></th></tr>
+                </tfoot>
+              </table>
+              @if (!readOnly()) {
+                <button type="button" class="w-full py-2 text-sm text-indigo-700 hover:bg-indigo-50 border-t border-slate-200" (click)="addCustomDefect(cat.key)">+ Add other {{ cat.key.toLowerCase() }} defect</button>
+              }
+            </div>
+          }
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
+          <div class="aql-box" [ngClass]="ev.majorResult === 'FAIL' ? 'bad' : ev.majorResult === 'PASS' ? 'good' : ''">
+            <span>MAJOR found</span><b>{{ ev.totalMajor }}</b>
+            <span>allowed (Ac) {{ ev.majorPlan?.ac ?? '–' }} · reject at {{ ev.majorPlan?.re ?? '–' }}</span>
+            <span class="badge" [ngClass]="resultClass(ev.majorResult)">{{ ev.majorResult || '—' }}</span>
+          </div>
+          <div class="aql-box" [ngClass]="ev.minorResult === 'FAIL' ? 'bad' : ev.minorResult === 'PASS' ? 'good' : ''">
+            <span>MINOR found</span><b>{{ ev.totalMinor }}</b>
+            <span>allowed (Ac) {{ ev.minorPlan?.ac ?? '–' }} · reject at {{ ev.minorPlan?.re ?? '–' }}</span>
+            <span class="badge" [ngClass]="resultClass(ev.minorResult)">{{ ev.minorResult || '—' }}</span>
+          </div>
+        </div>
+
+        <label class="fld mt-4"><span>Fault Description {{ ev.totalMajor + ev.totalMinor > 0 ? '*' : '' }}</span>
+          <textarea class="inp" rows="3" maxlength="2000" placeholder="Where and what — e.g. side seam chain stitch open, bartack missing at fly edge…"
+                    [value]="f.faultDescription" (input)="setText('faultDescription', $any($event.target).value)"></textarea>
+        </label>
+        <label class="fld mt-3"><span>Comments</span>
+          <textarea class="inp" rows="2" maxlength="1000" [value]="f.defectComments" (input)="setText('defectComments', $any($event.target).value)"></textarea>
+        </label>
+      </section>
+
+      <!-- 5. Result -->
+      <section class="card p-4">
+        <h3 class="sec">5. QC Result</h3>
+        <div class="grid grid-cols-2 lg:grid-cols-5 gap-2 mb-4 text-sm">
+          <div class="res-cell"><span>Measurement</span><b class="badge" [ngClass]="resultClass(f.measurementResult)">{{ f.measurementResult || '—' }}</b></div>
+          <div class="res-cell"><span>Packing</span><b class="badge" [ngClass]="resultClass(f.packingResult)">{{ f.packingResult || '—' }}</b></div>
+          <div class="res-cell"><span>Major AQL</span><b class="badge" [ngClass]="resultClass(ev.majorResult)">{{ ev.majorResult || '—' }}</b></div>
+          <div class="res-cell"><span>Minor AQL</span><b class="badge" [ngClass]="resultClass(ev.minorResult)">{{ ev.minorResult || '—' }}</b></div>
+          <div class="res-cell res-sys"><span>System Result</span><b class="badge" [ngClass]="resultClass(ev.systemResult)">{{ ev.systemResult || 'INCOMPLETE' }}</b></div>
+        </div>
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-3">
+          <div class="fld"><span>Final Result *</span>
+            <div class="seg">
+              @for (r of ['PASS', 'FAIL', 'DEROGATION']; track r) {
+                <button type="button" [class]="r.toLowerCase()" [class.on]="f.finalResult === r"
+                        [disabled]="!allowedFinal().includes(r)" (click)="setText('finalResult', r)">{{ r }}</button>
+              }
+            </div>
+            <em class="text-xs text-slate-500 mt-1">
+              @if (ev.systemResult === 'FAIL') { Criteria failed — choose FAIL, or DEROGATION to accept with justification. }
+              @else if (ev.systemResult === 'PASS') { Criteria met — choose PASS (or FAIL with a reason). }
+              @else { Complete both audits and the lot qty to enable a final result. }
+            </em>
+          </div>
+          <label class="fld lg:col-span-2"><span>Final Remarks {{ remarksRequired() ? '*' : '' }}</span>
+            <textarea class="inp" rows="2" maxlength="1000"
+                      placeholder="e.g. Goods are found with major defects but considered to pass as derogation; next time it will not be allowed"
+                      [value]="f.finalRemarks" (input)="setText('finalRemarks', $any($event.target).value)"></textarea>
+          </label>
+        </div>
+      </section>
+
+      <!-- 6. Sign-off -->
+      <section class="card p-4">
+        <h3 class="sec">6. Sign-off</h3>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+          <label class="fld"><span>QC Inspector *</span><input class="inp" maxlength="100" [value]="f.inspectorName" (input)="setText('inspectorName', $any($event.target).value)" /></label>
+          <label class="fld"><span>Unit Incharge</span><input class="inp" maxlength="100" [value]="f.unitIncharge" (input)="setText('unitIncharge', $any($event.target).value)" /></label>
+          <label class="fld"><span>Merchandiser</span><input class="inp" maxlength="100" [value]="f.merchandiser" (input)="setText('merchandiser', $any($event.target).value)" /></label>
+          <label class="fld"><span>AMQC</span><input class="inp" maxlength="100" [value]="f.amqc" (input)="setText('amqc', $any($event.target).value)" /></label>
+          <label class="fld"><span>GM</span><input class="inp" maxlength="100" [value]="f.gm" (input)="setText('gm', $any($event.target).value)" /></label>
+        </div>
+      </section>
+    </fieldset>
+
+    <!-- 7. Photos (outside the fieldset so viewing stays enabled when read-only) -->
+    <section class="card p-4 mt-4">
+      <h3 class="sec">7. Defect Photos</h3>
+      @if (!record()) {
+        <p class="text-sm text-slate-500">Save the report as a draft first, then add defect photos.</p>
+      } @else {
+        @if (!readOnly()) {
+          <div class="flex flex-col sm:flex-row gap-2 mb-3">
+            <input class="inp flex-1" maxlength="200" placeholder="Caption — e.g. OPEN SEAM WITH SECURE STITCH"
+                   [value]="photoCaption()" (input)="photoCaption.set($any($event.target).value)" />
+            <label class="btn-secondary cursor-pointer text-center" [class.opacity-50]="photoUploading()">
+              {{ photoUploading() ? 'Uploading…' : 'Choose photo' }}
+              <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" class="hidden"
+                     [disabled]="photoUploading()" (change)="onPhotoSelected($any($event.target))" />
+            </label>
+          </div>
+        }
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+          @for (p of photos(); track p.id) {
+            <figure class="border border-slate-200 rounded-lg overflow-hidden bg-slate-50">
+              <figcaption class="flex items-start justify-between gap-2 px-2 py-1.5 text-xs font-semibold text-slate-700 border-b border-slate-200 bg-white">
+                <span>{{ p.caption }}</span>
+                @if (!readOnly()) { <button class="text-slate-400 hover:text-rose-600" (click)="deletePhoto(p)" aria-label="Remove photo">&#x2715;</button> }
+              </figcaption>
+              @if (p.dataUrl) { <img [src]="p.dataUrl" [alt]="p.caption" class="w-full h-40 object-contain" /> }
+            </figure>
+          } @empty {
+            <p class="text-sm text-slate-500 col-span-full">No photos yet.</p>
+          }
+        </div>
+      }
+    </section>
+
+    <!-- Action bar -->
+    <div class="action-bar">
+      <div class="text-sm text-slate-600">
+        System: <span class="badge" [ngClass]="resultClass(ev.systemResult)">{{ ev.systemResult || 'INCOMPLETE' }}</span>
+        &nbsp;Final: <span class="badge" [ngClass]="resultClass(f.finalResult)">{{ f.finalResult || '—' }}</span>
+      </div>
+      <div class="flex gap-2">
+        @if (record()) { <button class="btn-secondary" (click)="openViewer(record()!.id)">Preview / Print</button> }
+        @if (!readOnly()) {
+          <button class="btn-secondary" [disabled]="saving()" (click)="save('draft')">{{ saving() ? 'Saving…' : 'Save Draft' }}</button>
+          <button class="btn-primary" [disabled]="saving()" (click)="save('submit')">Submit for Approval</button>
+        }
+      </div>
+    </div>
+    } }
+  }
+
+  @if (viewerId(); as id) {
+    <qc-report-viewer [inspectionId]="id" (closed)="closeViewer()" (edit)="editInspection($event)" (changed)="onViewerChanged()"></qc-report-viewer>
+  }
+</div>

@@ -13,6 +13,9 @@ const ALL_SCREENS = [
     { key: 'partyBinMaster',  label: 'Party Bin Master' },
     { key: 'joStatus',        label: 'JO Status' },
     { key: 'userManagement',  label: 'User Management' },
+    { key: 'qcInspection',    label: 'QC Inspection' },
+    { key: 'qcReport',        label: 'QC Report' },
+    { key: 'qcApprove',       label: 'QC Approval' },
 ];
 
 router.use(authenticate, authorize('userManagement'));
@@ -169,7 +172,7 @@ function parsePermissions(raw) {
 async function ensureDefaultRoles() {
     const defaults = [
         { roleName: 'admin',     displayName: 'Administrator', description: 'Full system access — all screens and user management.',
-          permissions: ['dashBoard','vendor','warehouse','gate','partyBinMaster','joStatus','userManagement'] },
+          permissions: ['dashBoard','vendor','warehouse','gate','partyBinMaster','joStatus','userManagement','qcInspection','qcReport','qcApprove'] },
         { roleName: 'manager',   displayName: 'Manager',       description: 'View JO Status overview, production details and warehouse approvals.',
           permissions: ['dashBoard','warehouse','joStatus'] },
         { roleName: 'vendor',    displayName: 'Vendor',        description: 'Access vendor entry process and JO Status.',

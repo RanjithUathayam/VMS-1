@@ -47,6 +47,16 @@
             JO Status
           </button>
         }
+        @if(canSeeQcInspection()) {
+          <button (click)="setView('qcInspection')" [class]="activeView() === 'qcInspection' ? 'bg-indigo-600 text-white' : 'text-gray-300 hover:bg-slate-800 hover:text-white'" class="w-full flex items-center px-4 py-2 mt-2 text-sm font-semibold rounded-lg transition-colors duration-200">
+            QC Inspection
+          </button>
+        }
+        @if(canSeeQcReport()) {
+          <button (click)="setView('qcReport')" [class]="activeView() === 'qcReport' ? 'bg-indigo-600 text-white' : 'text-gray-300 hover:bg-slate-800 hover:text-white'" class="w-full flex items-center px-4 py-2 mt-2 text-sm font-semibold rounded-lg transition-colors duration-200">
+            QC Report
+          </button>
+        }
         @if(canSeeUserManagement()) {
           <button (click)="setView('userManagement')" [class]="activeView() === 'userManagement' ? 'bg-indigo-600 text-white' : 'text-gray-300 hover:bg-slate-800 hover:text-white'" class="w-full flex items-center px-4 py-2 mt-2 text-sm font-semibold rounded-lg transition-colors duration-200">
             User Management
@@ -116,6 +126,12 @@
             }
             @case ('userManagement') {
                 <user-management></user-management>
+            }
+            @case ('qcInspection') {
+                <qc-inspection></qc-inspection>
+            }
+            @case ('qcReport') {
+                <qc-report></qc-report>
             }
           }
         </main>

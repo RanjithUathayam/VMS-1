@@ -30,6 +30,9 @@ export const ALL_SCREENS = [
     { key: 'partyBinMaster',  label: 'Party Bin Master' },
     { key: 'joStatus',        label: 'JO Status' },
     { key: 'userManagement',  label: 'User Management' },
+    { key: 'qcInspection',    label: 'QC Inspection' },
+    { key: 'qcReport',        label: 'QC Report' },
+    { key: 'qcApprove',       label: 'QC Approval' },
 ] as const;
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────

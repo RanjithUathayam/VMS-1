@@ -102,11 +102,15 @@
                             } 
                             @else 
                             {
-                                @for (list of filteredPartyList; track list.CardName) 
+                                @for (list of filteredPartyList; track list.CardCode)
                                 {
                                     <div class="dropdown-item" (click)="selectPartyName(list)">
                                         {{list.CardCode}} / {{ list.CardName }}
                                     </div>
+                                }
+                                @if (filteredPartyList.length >= maxPartyResults)
+                                {
+                                    <div class="dropdown-item empty">Showing first {{ maxPartyResults }} matches, type more to refine</div>
                                 }
                             }
                         </div>

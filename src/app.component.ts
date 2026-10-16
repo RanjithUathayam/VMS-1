@@ -10,10 +10,13 @@ import { PartyBinMasterComponent } from './components/party-bin-master/party-bin
 import { JoStatusComponent } from './components/jo-status/jo-status.component';
 import { JoVendorNavigationService } from './services/jo-vendor-navigation.service';
 import { UserManagementComponent } from './components/user-management/user-management.component';
+import { QcInspectionComponent } from './components/qc-inspection/qc-inspection.component';
+import { QcReportComponent } from './components/qc-report/qc-report.component';
+import { QcNavigationService } from './services/qc-navigation.service';
 
 declare const Swal: any;
 
-type View = 'dashBoard' | 'vendor' | 'warehouse' | 'gate' | 'partyBinMaster' | 'joStatus' | 'userManagement';
+type View = 'dashBoard' | 'vendor' | 'warehouse' | 'gate' | 'partyBinMaster' | 'joStatus' | 'userManagement' | 'qcInspection' | 'qcReport';
 
 @Component({
   selector: 'app-root',
@@ -24,12 +27,13 @@ type View = 'dashBoard' | 'vendor' | 'warehouse' | 'gate' | 'partyBinMaster' | '
   imports: [
     CommonModule, LoginComponent, VendorEntryComponent, WarehouseApprovalComponent,
     GateEntryComponent, DashboardComponent, PartyBinMasterComponent,
-    JoStatusComponent, UserManagementComponent,
+    JoStatusComponent, UserManagementComponent, QcInspectionComponent, QcReportComponent,
   ],
 })
 export class AppComponent {
   authService = inject(AuthService);
   joVendorNav = inject(JoVendorNavigationService);
+  qcNav       = inject(QcNavigationService);
 
   currentUser   = this.authService.currentUser;
   activeView    = signal<View>('dashBoard');
@@ -43,6 +47,8 @@ export class AppComponent {
   canSeePartyBinMaster  = computed(() => this.authService.hasPermission('partyBinMaster'));
   canSeeJoStatus        = computed(() => this.authService.hasPermission('joStatus'));
   canSeeUserManagement  = computed(() => this.authService.hasPermission('userManagement'));
+  canSeeQcInspection    = computed(() => this.authService.hasPermission('qcInspection'));
+  canSeeQcReport        = computed(() => this.authService.hasPermission('qcReport') || this.authService.hasPermission('qcApprove'));
 
   // ── Change Password modal ────────────────────────────────
   showChangePwd     = signal(false);
@@ -58,9 +64,9 @@ export class AppComponent {
       if (!user) return;
       const priority: View[] = [
         'vendor', 'dashBoard', 'joStatus', 'warehouse',
-        'gate', 'partyBinMaster', 'userManagement',
+        'gate', 'partyBinMaster', 'qcInspection', 'qcReport', 'userManagement',
       ];
-      const first = priority.find(v => this.authService.hasPermission(v));
+      const first = priority.find(v => v === 'qcReport' ? this.canSeeQcReport() : this.authService.hasPermission(v));
       if (first) this.setView(first);
     }, { allowSignalWrites: true });
 
@@ -68,6 +74,12 @@ export class AppComponent {
     effect(() => {
       const req = this.joVendorNav.navigationRequested();
       if (req > 0) this.setView('vendor');
+    }, { allowSignalWrites: true });
+
+    // Open a QC report for editing when the QC Report screen requests it
+    effect(() => {
+      const req = this.qcNav.navigationRequested();
+      if (req > 0) this.setView('qcInspection');
     }, { allowSignalWrites: true });
   }
 
