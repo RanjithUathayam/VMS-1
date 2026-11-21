@@ -1,5 +1,5 @@
 import {
-    ChangeDetectionStrategy, Component, OnInit, computed, effect, inject, signal,
+    ChangeDetectionStrategy, Component, ElementRef, OnInit, computed, effect, inject, signal, viewChild,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { QcService, apiError } from '../../services/qc.service';
@@ -90,7 +90,32 @@ export class QcInspectionComponent implements OnInit {
     isVendor = computed(() => this.auth.currentUser()?.role === 'vendor');
     selectedDoc = computed(() => this.documents().find(d => d.docNum === this.form().docNum) || null);
 
+    // Supplier combobox (searchable dropdown)
+    private static readonly PARTY_LIMIT = 100;
+    partyInput = viewChild<ElementRef<HTMLInputElement>>('partyInput');
+    partyOpen = signal(false);
+    partyQuery = signal('');
+    partyActive = signal(0);
+    private partyMatches = computed(() => {
+        const q = this.partyQuery().trim().toLowerCase();
+        const all = this.parties();
+        if (!q) return all;
+        const terms = q.split(/\s+/);
+        const hits = all.filter(p => {
+            const hay = `${p.code} ${p.name}`.toLowerCase();
+            return terms.every(t => hay.includes(t));
+        });
+        // Code prefix matches first, then name prefix, then the rest.
+        const rank = (p: QcParty) => p.code.toLowerCase().startsWith(q) ? 0 : p.name.toLowerCase().startsWith(q) ? 1 : 2;
+        return hits.sort((a, b) => rank(a) - rank(b));
+    });
+    partyMatchCount = computed(() => this.partyMatches().length);
+    filteredParties = computed(() => this.partyMatches().slice(0, QcInspectionComponent.PARTY_LIMIT));
+
     photos = signal<QcPhoto[]>([]);
+    /** Photos picked before the report has an id; uploaded right after the next save. */
+    pendingPhotos = signal<QcPhoto[]>([]);
+    allPhotos = computed(() => [...this.photos(), ...this.pendingPhotos()]);
     photoCaption = signal('');
     photoUploading = signal(false);
 
@@ -112,11 +137,14 @@ export class QcInspectionComponent implements OnInit {
     });
 
     constructor() {
-        // Drop a final result that the (re)computed system result no longer allows.
+        // Keep the final result consistent with the system result: default it when empty,
+        // and replace one the (re)computed system result no longer allows.
         effect(() => {
             const fr = this.form().finalResult;
+            const sys = this.evaluation().systemResult;
             const allowed = this.allowedFinal();
-            if (fr && allowed.length && !allowed.includes(fr)) this.form.update(f => ({ ...f, finalResult: '' }));
+            if (this.readOnly() || !sys) return;
+            if (!fr || !allowed.includes(fr)) this.form.update(f => ({ ...f, finalResult: sys }));
         }, { allowSignalWrites: true });
     }
 
@@ -192,6 +220,7 @@ export class QcInspectionComponent implements OnInit {
         this.record.set(null);
         this.clientToken.set(newToken());
         this.photos.set([]);
+        this.pendingPhotos.set([]);
         this.photoCaption.set('');
         this.errors.set([]);
         this.dirty.set(false);
@@ -212,6 +241,7 @@ export class QcInspectionComponent implements OnInit {
         try {
             const r = await this.qc.getDetail(id);
             this.applyRecord(r);
+            this.pendingPhotos.set([]);
             this.errors.set([]);
             this.view.set('form');
             this.documents.set([]);
@@ -246,7 +276,7 @@ export class QcInspectionComponent implements OnInit {
     }
 
     async backToList(): Promise<void> {
-        if (this.dirty() && !this.readOnly()) {
+        if ((this.dirty() || this.pendingPhotos().length) && !this.readOnly()) {
             const ok = await Swal.fire({ icon: 'warning', title: 'Discard unsaved changes?', showCancelButton: true, confirmButtonText: 'Discard' });
             if (!ok.isConfirmed) return;
         }
@@ -328,6 +358,94 @@ export class QcInspectionComponent implements OnInit {
         this.loadDocuments();
     }
 
+    // ── Supplier combobox ──
+    openPartyMenu(): void {
+        if (this.isVendor() || this.readOnly()) return;
+        this.partyQuery.set('');
+        const idx = this.filteredParties().findIndex(p => p.code === this.form().supplierCode);
+        this.partyActive.set(Math.max(0, idx));
+        this.partyOpen.set(true);
+        this.loadParties();
+        setTimeout(() => {
+            this.partyInput()?.nativeElement.focus();
+            this.scrollActiveParty();
+        });
+    }
+
+    closePartyMenu(): void {
+        this.partyOpen.set(false);
+        this.partyQuery.set('');
+    }
+
+    onPartyQuery(value: string): void {
+        this.partyQuery.set(value);
+        this.partyActive.set(0);
+    }
+
+    onPartyFocusOut(event: FocusEvent): void {
+        const box = event.currentTarget as HTMLElement;
+        const next = event.relatedTarget as Node | null;
+        if (next && box.contains(next)) return;
+        // Opening swaps the trigger button for the search input; removing the focused button fires a
+        // focusout with no relatedTarget. Wait until focus settles before deciding to close.
+        setTimeout(() => {
+            if (this.partyOpen() && !box.contains(document.activeElement)) this.closePartyMenu();
+        });
+    }
+
+    onTriggerKeydown(event: KeyboardEvent): void {
+        if (event.key === 'ArrowDown' || event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            this.openPartyMenu();
+        }
+    }
+
+    onPartyKeydown(event: KeyboardEvent): void {
+        const list = this.filteredParties();
+        switch (event.key) {
+            case 'ArrowDown':
+                event.preventDefault();
+                this.partyActive.set(Math.min(list.length - 1, this.partyActive() + 1));
+                this.scrollActiveParty();
+                break;
+            case 'ArrowUp':
+                event.preventDefault();
+                this.partyActive.set(Math.max(0, this.partyActive() - 1));
+                this.scrollActiveParty();
+                break;
+            case 'Enter': {
+                event.preventDefault();
+                const p = list[this.partyActive()];
+                if (p) this.pickParty(p);
+                break;
+            }
+            case 'Escape':
+                event.preventDefault();
+                this.closePartyMenu();
+                break;
+            case 'Tab':
+                this.closePartyMenu();
+                break;
+        }
+    }
+
+    pickParty(p: QcParty): void {
+        this.closePartyMenu();
+        if (p.code !== this.form().supplierCode) this.selectParty(p.code);
+    }
+
+    clearParty(event: Event): void {
+        event.stopPropagation();
+        this.form.update(f => ({ ...f, supplierCode: '', supplierName: '', docNum: '', docEntry: null }));
+        this.documents.set([]);
+        this.docsError.set('');
+        this.dirty.set(true);
+    }
+
+    private scrollActiveParty(): void {
+        setTimeout(() => document.getElementById('qc-party-' + this.partyActive())?.scrollIntoView({ block: 'nearest' }));
+    }
+
     /** Accepts "CODE — NAME" (picked from the list) or a bare supplier code. */
     selectParty(raw: string): void {
         const text = raw.trim();
@@ -386,19 +504,28 @@ export class QcInspectionComponent implements OnInit {
         }
 
         this.saving.set(true);
-        const rec = this.record();
         try {
-            const payload = {
-                ...f,
-                defects: f.defects.filter(d => d.defectName.trim() && ((Number(d.majorQty) || 0) > 0 || (Number(d.minorQty) || 0) > 0)),
-                action,
-                id: rec?.id ?? null,
-                rowVersion: rec?.rowVersion ?? null,
-                clientToken: rec ? null : this.clientToken(),
-            };
-            const res = await this.qc.save(payload);
-            this.applyRecord(res.data);
-            this.errors.set([]);
+            // Photos can only be attached while the report is editable, so staged photos go up
+            // after a draft save and before the submit locks the report.
+            if (this.pendingPhotos().length && (action === 'draft' || !this.record())) {
+                await this.persist(f, 'draft');
+                const failed = await this.uploadPendingPhotos();
+                if (failed) {
+                    Swal.fire({ icon: 'warning', title: 'Saved as draft', text: `${failed} photo(s) could not be uploaded: ${this.lastPhotoError}` });
+                    return;
+                }
+                if (action === 'draft') {
+                    Swal.fire({ icon: 'success', title: 'Draft saved with photos.', timer: 2000, showConfirmButton: false });
+                    return;
+                }
+            } else if (this.pendingPhotos().length) {
+                const failed = await this.uploadPendingPhotos();
+                if (failed) {
+                    Swal.fire({ icon: 'warning', title: 'Not submitted', text: `${failed} photo(s) could not be uploaded: ${this.lastPhotoError}` });
+                    return;
+                }
+            }
+            const res = await this.persist(f, action);
             const warn = res.warnings?.length ? res.warnings.join(' ') : '';
             Swal.fire({ icon: res.duplicate ? 'info' : 'success', title: res.message, text: warn, timer: warn ? undefined : 2000, showConfirmButton: !!warn });
             if (action === 'submit') { this.view.set('list'); this.loadList(1); }
@@ -411,12 +538,48 @@ export class QcInspectionComponent implements OnInit {
         }
     }
 
+    private async persist(f: QcForm, action: 'draft' | 'submit') {
+        const rec = this.record();
+        const payload = {
+            ...f,
+            defects: f.defects.filter(d => d.defectName.trim() && ((Number(d.majorQty) || 0) > 0 || (Number(d.minorQty) || 0) > 0)),
+            action,
+            id: rec?.id ?? null,
+            rowVersion: rec?.rowVersion ?? null,
+            clientToken: rec ? null : this.clientToken(),
+        };
+        const res = await this.qc.save(payload);
+        this.applyRecord(res.data);
+        this.errors.set([]);
+        return res;
+    }
+
+    private lastPhotoError = '';
+
+    /** Uploads staged photos to the saved report; returns how many failed (those stay staged). */
+    private async uploadPendingPhotos(): Promise<number> {
+        const rec = this.record();
+        if (!rec) return this.pendingPhotos().length;
+        let failed = 0;
+        for (const p of this.pendingPhotos()) {
+            try {
+                const res = await this.qc.addPhoto(rec.id, p.caption, p.dataUrl!);
+                this.photos.update(list => [...list, { id: res.data.id, caption: res.data.caption, dataUrl: p.dataUrl }]);
+                this.pendingPhotos.update(list => list.filter(x => x !== p));
+            } catch (err) {
+                failed++;
+                this.lastPhotoError = apiError(err, 'Upload failed.').message;
+            }
+        }
+        return failed;
+    }
+
     // ── Defect photos (DEFECT PHOTO sheet) ─────────────────
     async onPhotoSelected(input: HTMLInputElement): Promise<void> {
         const file = input.files?.[0];
         input.value = '';
         const rec = this.record();
-        if (!file || !rec) return;
+        if (!file) return;
         if (!this.photoCaption().trim()) {
             Swal.fire({ icon: 'warning', title: 'Caption required', text: 'Describe the defect (e.g. "OPEN SEAM AT BOTTOM HEM") before adding the photo.' });
             return;
@@ -428,8 +591,14 @@ export class QcInspectionComponent implements OnInit {
         this.photoUploading.set(true);
         try {
             const dataUrl = await this.downscale(file);
-            const res = await this.qc.addPhoto(rec.id, this.photoCaption().trim(), dataUrl);
-            this.photos.update(p => [...p, { id: res.data.id, caption: res.data.caption, dataUrl }]);
+            const caption = this.photoCaption().trim();
+            if (rec) {
+                const res = await this.qc.addPhoto(rec.id, caption, dataUrl);
+                this.photos.update(p => [...p, { id: res.data.id, caption: res.data.caption, dataUrl }]);
+            } else {
+                // No report id yet — stage it; it is uploaded with the first save.
+                this.pendingPhotos.update(p => [...p, { id: -Date.now(), caption, dataUrl, pending: true }]);
+            }
             this.photoCaption.set('');
         } catch (err) {
             Swal.fire({ icon: 'error', title: 'Photo not added', text: apiError(err, (err as Error)?.message).message });
@@ -439,6 +608,10 @@ export class QcInspectionComponent implements OnInit {
     }
 
     async deletePhoto(photo: QcPhoto): Promise<void> {
+        if (photo.pending) {
+            this.pendingPhotos.update(p => p.filter(x => x !== photo));
+            return;
+        }
         const ok = await Swal.fire({ icon: 'warning', title: 'Remove this photo?', text: photo.caption, showCancelButton: true, confirmButtonText: 'Remove' });
         if (!ok.isConfirmed) return;
         try {

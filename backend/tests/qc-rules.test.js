@@ -45,14 +45,14 @@ test('plans match the sheet single-sampling table, including arrows', () => {
     assert.deepEqual(planFor(2829, 'I', 4.0), { codeLetter: 'H', planLetter: 'H', sampleSize: 50, ac: 5, re: 6, fullInspection: false });
     assert.deepEqual(planFor(2829, 'I', 6.5), { codeLetter: 'H', planLetter: 'H', sampleSize: 50, ac: 7, re: 8, fullInspection: false });
     assert.deepEqual(planFor(2829, 'II', 2.5), { codeLetter: 'K', planLetter: 'K', sampleSize: 125, ac: 7, re: 8, fullInspection: false });
-    // ↓ arrow: lot 51–90 level II = E, AQL 2.5 → use F (n=20, 1/2)
-    assert.deepEqual(planFor(60, 'II', 2.5), { codeLetter: 'E', planLetter: 'F', sampleSize: 20, ac: 1, re: 2, fullInspection: false });
-    // ↑ arrow: code D, AQL 2.5 → use C (n=5, 0/1)
-    assert.deepEqual(planFor(30, 'II', 2.5), { codeLetter: 'D', planLetter: 'C', sampleSize: 5, ac: 0, re: 1, fullInspection: false });
-    // ↑ at bottom of column: code R, AQL 6.5 → 21/22 at L (n=200)
-    assert.deepEqual(planFor(600000, 'III', 6.5), { codeLetter: 'R', planLetter: 'L', sampleSize: 200, ac: 21, re: 22, fullInspection: false });
-    // ↓ to 0/1 at L for AQL 0.065
-    assert.deepEqual(planFor(100, 'I', 0.065), { codeLetter: 'D', planLetter: 'L', sampleSize: 100, ac: 0, re: 1, fullInspection: true });
+    // ↓ arrow: lot 51–90 level II = E (n=13 from lot chart), AQL 2.5 → Ac/Re of F (1/2)
+    assert.deepEqual(planFor(60, 'II', 2.5), { codeLetter: 'E', planLetter: 'F', sampleSize: 13, ac: 1, re: 2, fullInspection: false });
+    // ↑ arrow: code D (n=8), AQL 2.5 → Ac/Re of C (0/1)
+    assert.deepEqual(planFor(30, 'II', 2.5), { codeLetter: 'D', planLetter: 'C', sampleSize: 8, ac: 0, re: 1, fullInspection: false });
+    // ↑ at bottom of column: code R (n=2000), AQL 6.5 → 21/22 at L
+    assert.deepEqual(planFor(600000, 'III', 6.5), { codeLetter: 'R', planLetter: 'L', sampleSize: 2000, ac: 21, re: 22, fullInspection: false });
+    // code D (n=8), AQL 0.065 → 0/1 at L
+    assert.deepEqual(planFor(100, 'I', 0.065), { codeLetter: 'D', planLetter: 'L', sampleSize: 8, ac: 0, re: 1, fullInspection: false });
     assert.equal(planFor(100, 'I', 3.0), null);
 });
 

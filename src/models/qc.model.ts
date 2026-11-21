@@ -72,6 +72,8 @@ export interface QcPhoto {
     id: number;
     caption: string;
     dataUrl?: string;
+    /** Client-only: picked before the report was saved, not uploaded yet. */
+    pending?: boolean;
 }
 
 /** A saved inspection as returned by the API. */

@@ -55,7 +55,8 @@ export function planFor(lotQty: unknown, level: string, aql: unknown): AqlPlan |
     if (!codeLetter || ai < 0) return null;
     const cell = resolveCell(CODE_LETTERS.indexOf(codeLetter), ai);
     const lot = Math.floor(Number(lotQty));
-    const tableSample = SAMPLE_SIZES[cell.letterIdx];
+    // Sample size comes from the lot-qty code letter (chart value); arrows only move Ac/Re.
+    const tableSample = SAMPLE_SIZES[CODE_LETTERS.indexOf(codeLetter)];
     return {
         codeLetter,
         planLetter: CODE_LETTERS[cell.letterIdx],
